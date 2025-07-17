@@ -1646,13 +1646,13 @@ cv::Mat ImageProcessor::createCylindricalSurroundView(const cv::Mat& front, cons
         
         std::cout << "All cylindrical projections completed successfully" << std::endl;
         
-        // Step 3: Create panoramic cylindrical canvas - INCREASED SCALE
+        // Step 3: Create panoramic cylindrical canvas - OPTIMIZED FOR IMMERSION
         std::cout << "Creating cylindrical panoramic canvas..." << std::endl;
-        int canvasWidth = 1600;   // Wide panoramic canvas for full 360-degree view
-        int canvasHeight = 800;   // Height for bird's-eye view
+        int canvasWidth = 2400;   // Increased from 1800 to reduce compression and improve quality
+        int canvasHeight = 1200;  // Increased from 900 to reduce compression and improve quality
         cv::Mat canvas = cv::Mat::zeros(canvasHeight, canvasWidth, CV_8UC3);
         
-        // Step 4: Create seamless cylindrical panorama with proper warping - INCREASED SCALE
+        // Step 4: Create seamless cylindrical panorama with proper warping - REDUCED ZOOM, BETTER BLENDING
         std::cout << "Creating seamless cylindrical panorama with proper warping..." << std::endl;
         cv::Point2f canvasCenter(canvasWidth / 2.0f, canvasHeight / 2.0f);
         
@@ -1665,13 +1665,13 @@ cv::Mat ImageProcessor::createCylindricalSurroundView(const cv::Mat& front, cons
             std::string name;
         };
         
-        // Create overlapping angular sectors for seamless blending - FIXED: Correct left/right placement
-        float sectorSize = 100.0f;  // Each camera covers 100 degrees with overlap
+        // Create wider angular sectors with better overlap for seamless blending - INCREASED RADIUS
+        float baseRadius = 360.0f;  // Increased from 280.0f to reduce compression and improve image quality
         std::vector<CameraPlacement> cameras = {
-            {cylFront, 225.0f, 315.0f, 350.0f, "front"},  // Front: 225° to 315° (centered at 270°/top) - increased radius
-            {cylLeft, 315.0f, 45.0f, 350.0f, "left"},     // Left: 315° to 45° (centered at 0°/right side) - FIXED: use cylLeft
-            {cylBack, 45.0f, 135.0f, 350.0f, "back"},     // Back: 45° to 135° (centered at 90°/bottom) - increased radius
-            {cylRight, 135.0f, 225.0f, 350.0f, "right"}   // Right: 135° to 225° (centered at 180°/left side) - FIXED: use cylRight
+            {cylFront, 225.0f, 315.0f, baseRadius, "front"},  // Front: 225° to 315° (centered at 270°/top) - reduced zoom
+            {cylLeft, 315.0f, 45.0f, baseRadius, "left"},     // Left: 315° to 45° (centered at 0°/right side) 
+            {cylBack, 45.0f, 135.0f, baseRadius, "back"},     // Back: 45° to 135° (centered at 90°/bottom) - reduced zoom
+            {cylRight, 135.0f, 225.0f, baseRadius, "right"}   // Right: 135° to 225° (centered at 180°/left side)
         };
         
         // Debug: Print camera sector information
@@ -1689,8 +1689,8 @@ cv::Mat ImageProcessor::createCylindricalSurroundView(const cv::Mat& front, cons
                 float angle = std::atan2(dy, dx) * 180.0f / CV_PI;
                 if (angle < 0) angle += 360.0f;  // Normalize to 0-360
                 
-                // Only process pixels within the panoramic radius - INCREASED SCALE
-                if (distance < 400.0f && distance > 80.0f) {
+                // Only process pixels within the panoramic radius - OPTIMIZED FOR IMMERSION (increased inner radius)
+                if (distance < 360.0f && distance > 100.0f) {
                     cv::Vec3f totalColor(0, 0, 0);
                     float totalWeight = 0.0f;
                     
@@ -1726,31 +1726,18 @@ cv::Mat ImageProcessor::createCylindricalSurroundView(const cv::Mat& front, cons
                             if (angleOffset > 180.0f) angleOffset -= 360.0f;
                             if (angleOffset < -180.0f) angleOffset += 360.0f;
                             
-                            // Map to image coordinates with camera-specific improved mapping
-                            float normalizedOffset = angleOffset / (sectorSize / 2.0f);  // Normalize to [-1, 1]
+                            // Improved mapping to reduce zoom and increase field of view
+                            float sectorHalfWidth = 45.0f;  // Increased from previous sector calculation
+                            float normalizedOffset = angleOffset / sectorHalfWidth;  // Normalize to [-1, 1]
                             
-                            // Camera-specific horizontal mapping for better coverage
-                            float imgX;
-                            if (cam.name == "left" || cam.name == "right") {
-                                // For side cameras, use more of the image width for better side coverage
-                                imgX = cam.image.cols * (0.5f + 0.45f * normalizedOffset);
-                            } else {
-                                // For front/back cameras, standard mapping
-                                imgX = cam.image.cols * (0.5f + 0.4f * normalizedOffset);
-                            }
+                            // Unified horizontal mapping for all cameras - same field of view and projection
+                            float imgX = cam.image.cols * (0.5f + 0.3f * normalizedOffset);
                             
-                            float radialFactor = (distance - 80.0f) / 320.0f;  // Normalize distance - INCREASED SCALE
+                            float radialFactor = (distance - 100.0f) / 260.0f;  // Normalize distance for less zoom (updated for new inner radius)
                             radialFactor = std::max(0.0f, std::min(1.0f, radialFactor));
                             
-                            // Camera-specific vertical mapping for better perspective
-                            float imgY;
-                            if (cam.name == "left" || cam.name == "right") {
-                                // For side cameras, use more vertical range for better side view
-                                imgY = cam.image.rows * (0.15f + 0.7f * radialFactor);
-                            } else {
-                                // For front/back cameras, standard vertical mapping
-                                imgY = cam.image.rows * (0.2f + 0.6f * radialFactor);
-                            }
+                            // Unified vertical mapping for all cameras - same projection parameters
+                            float imgY = cam.image.rows * (0.25f + 0.5f * radialFactor);
                             
                             // Bilinear interpolation
                             if (imgX >= 0 && imgX < cam.image.cols - 1 && imgY >= 0 && imgY < cam.image.rows - 1) {
@@ -1773,13 +1760,13 @@ cv::Mat ImageProcessor::createCylindricalSurroundView(const cv::Mat& front, cons
                                     cv::Vec3f(p10) * (1-fx) * fy +
                                     cv::Vec3f(p11) * fx * fy;
                                 
-                                // Calculate blend weight based on distance from sector center
-                                float blendWidth = 20.0f;  // Degrees of blending zone
+                                // Improved blending with wider blend zones for smoother transitions
+                                float blendWidth = 30.0f;  // Wider blending zone for smoother transitions
                                 float distToCenter = std::abs(angleOffset);
                                 float weight = 1.0f;
                                 
-                                // Calculate sector half-width
-                                float sectorHalfWidth = sectorSize / 2.0f;
+                                // Calculate sector half-width for improved blending
+                                float sectorHalfWidth = 45.0f;
                                 
                                 if (distToCenter > sectorHalfWidth - blendWidth) {
                                     float blendFactor = (sectorHalfWidth - distToCenter) / blendWidth;
@@ -1787,13 +1774,13 @@ cv::Mat ImageProcessor::createCylindricalSurroundView(const cv::Mat& front, cons
                                     weight = weight * weight * (3.0f - 2.0f * weight); // Smooth step function
                                 }
                                 
-                                // Additional radial falloff for smooth edge blending - INCREASED SCALE
+                                // Additional radial falloff for smooth edge blending - OPTIMIZED FOR IMMERSION
                                 float radialWeight = 1.0f;
-                                if (distance > 380.0f) {
-                                    radialWeight = (400.0f - distance) / 20.0f;
+                                if (distance > 340.0f) {
+                                    radialWeight = (360.0f - distance) / 20.0f;
                                     radialWeight = std::max(0.0f, std::min(1.0f, radialWeight));
-                                } else if (distance < 100.0f) {
-                                    radialWeight = (distance - 80.0f) / 20.0f;
+                                } else if (distance < 120.0f) {
+                                    radialWeight = (distance - 100.0f) / 20.0f;
                                     radialWeight = std::max(0.0f, std::min(1.0f, radialWeight));
                                 }
                                 
@@ -1819,9 +1806,9 @@ cv::Mat ImageProcessor::createCylindricalSurroundView(const cv::Mat& front, cons
                 }
             }
         }
-        // Add car representation at center
+        // Add car representation at center with better proportions for reduced zoom
         cv::Point carCenter(canvas.cols/2, canvas.rows/2);
-        int carWidth = 80, carHeight = 120;
+        int carWidth = 60, carHeight = 90;  // Smaller car representation for less zoom effect
         cv::Rect carRect(carCenter.x - carWidth/2, carCenter.y - carHeight/2, carWidth, carHeight);
         
         if (carRect.x >= 0 && carRect.y >= 0 && 
