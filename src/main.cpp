@@ -5,6 +5,7 @@
 #include <string>
 #include <chrono>
 #include <filesystem>
+#include <thread>
 
 int main() {
     std::cout << "Starting SurroundView3D Application..." << std::endl;
@@ -95,9 +96,10 @@ int main() {
         const double frameRate = 30.0; // 30 FPS  
         std::cout << "Starting surround view stream with " << frontSequence.size() << " frames at " << frameRate << " FPS" << std::endl;
         std::cout << "Applying full pipeline: fisheye undistortion + homography transformation..." << std::endl;
+        std::cout << "Using parallel processing with " << std::thread::hardware_concurrency() << " threads" << std::endl;
         
-        // Create surround view from all four cameras
-        cv::Mat surroundView = imageProcessor.createSurroundView(firstFront, firstLeft, firstRight, firstBack);
+        // Create surround view from all four cameras using parallel processing
+        cv::Mat surroundView = imageProcessor.createSurroundViewParallel(firstFront, firstLeft, firstRight, firstBack);
         if (!surroundView.empty()) {
             renderer.updateTexture(surroundView);
         } else {
@@ -130,8 +132,8 @@ int main() {
             cv::Mat currentBack = imageProcessor.loadImage(backSequence[currentImageIndex]);
             
             if (!currentFront.empty() && !currentLeft.empty() && !currentRight.empty() && !currentBack.empty()) {
-                // Create surround view from all four cameras
-                cv::Mat surroundView = imageProcessor.createSurroundView(currentFront, currentLeft, currentRight, currentBack);
+                // Create surround view from all four cameras using parallel processing
+                cv::Mat surroundView = imageProcessor.createSurroundViewParallel(currentFront, currentLeft, currentRight, currentBack);
                 
                 if (!surroundView.empty()) {
                     renderer.updateTexture(surroundView);

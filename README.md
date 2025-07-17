@@ -19,6 +19,7 @@ A real-time 3D surround view system for automotive applications using OpenGL and
   - Intrinsic parameters from `camera_intrinsics.yml`
   - Extrinsic parameters from `camera_extrinsics.csv`
 - **Optimized OpenGL Pipeline**: Hardware-accelerated rendering with selective lighting
+- **Multi-threaded Image Processing**: Parallel processing of camera feeds for improved performance
 
 ## Dependencies
 
@@ -118,14 +119,15 @@ cd build/Release
 
 #### CPU-Based Operations (OpenCV + C++)
 - **Image Loading**: File I/O and initial image decoding
-- **Fisheye Undistortion**: OpenCV `remap()` operations for lens correction
+- **Fisheye Undistortion**: OpenCV `remap()` operations for lens correction (parallelized per camera)
 - **Image Preprocessing**: 
   - Color space conversion (BGR → RGB)
-  - Image rotation (90°, 180° transformations)
+  - Image rotation (90°, 180° transformations) - parallelized
   - Cropping to remove vehicle frame
 - **Layout Composition**: Stitching multiple camera views into unified surround view
 - **Camera Calibration**: YAML/CSV file parsing and parameter loading
 - **Memory Management**: Image buffer allocation and data transfer preparation
+- **Multi-threading**: Parallel processing of multiple camera feeds using thread pool
 
 #### GPU-Based Operations (OpenGL Shaders)
 - **3D Rendering Pipeline**: Vertex and fragment shader execution
@@ -138,10 +140,11 @@ cd build/Release
 - **Perspective Projection**: 3D to 2D coordinate transformation
 
 ### Image Processing Pipeline
-1. **Fisheye Undistortion**: Uses camera intrinsic parameters (K matrix, distortion coefficients, xi) to correct lens distortion
-2. **Cropping**: Automatically removes vehicle frame from images using optimized crop regions
-3. **Layout Composition**: Combines four camera views into a unified surround view with proper aspect ratios
-4. **Texture Mapping**: Maps processed images onto a 3D plane mesh for seamless rendering
+1. **Parallel Fisheye Undistortion**: Uses camera intrinsic parameters (K matrix, distortion coefficients, xi) to correct lens distortion across all 4 cameras simultaneously
+2. **Concurrent Image Preprocessing**: Simultaneous rotation and cropping operations for each camera feed
+3. **Parallel Resize Operations**: Multi-threaded resizing to optimize layout composition
+4. **Layout Composition**: Combines four camera views into a unified surround view with proper aspect ratios
+5. **Texture Mapping**: Maps processed images onto a 3D plane mesh for seamless rendering
 
 ### Rendering Pipeline
 - **Selective Lighting**: Car model receives full ambient and directional lighting, while surround view plane uses unlit rendering
@@ -170,10 +173,12 @@ front,0.0,2.5,1.5,0.0,0.0,0.0,400,400,320,240,-0.2,0.1,0,0
 ## Performance Notes
 
 ### CPU Performance
-- **OpenCV Operations**: Single-threaded fisheye undistortion and image processing
-- **Memory Bandwidth**: CPU-GPU data transfer for texture updates
+- **Multi-threaded Processing**: Parallel undistortion and preprocessing of all 4 camera feeds
+- **Thread Pool**: Automatic detection and utilization of available CPU cores
+- **OpenCV Operations**: Optimized single-threaded fisheye undistortion per camera
+- **Memory Bandwidth**: Efficient CPU-GPU data transfer for texture updates
 - **I/O Operations**: File loading and camera parameter parsing
-- **Image Composition**: Multi-camera view stitching and layout arrangement
+- **Image Composition**: Parallel resize operations and sequential layout arrangement
 
 ### GPU Performance  
 - **Hardware Acceleration**: Parallel processing of vertices and fragments
@@ -182,8 +187,9 @@ front,0.0,2.5,1.5,0.0,0.0,0.0,400,400,320,240,-0.2,0.1,0,0
 - **Real-time Rendering**: 30+ FPS with multiple camera inputs
 
 ### Architecture Benefits
-- **Hybrid Processing**: CPU handles complex image algorithms, GPU handles rendering
-- **Scalable Design**: Modular pipeline allows independent optimization of CPU/GPU tasks
+- **Hybrid Processing**: CPU handles complex image algorithms with multi-threading, GPU handles rendering
+- **Scalable Design**: Thread pool scales with available CPU cores for optimal performance
+- **Parallel Pipeline**: Independent processing of camera feeds maximizes CPU utilization
 - **Memory Efficiency**: Minimized CPU-GPU transfers through optimized texture management
 
 ## Troubleshooting

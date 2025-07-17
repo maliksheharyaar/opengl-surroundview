@@ -4,8 +4,11 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
+#include <chrono>
+#include <future>
+#include <chrono>
 
-ImageProcessor::ImageProcessor() {
+ImageProcessor::ImageProcessor() : m_threadPoolInitialized(false), m_numThreads(0) {
     // Load camera parameters from YAML files on initialization
     loadCameraParameters("front");
     loadCameraParameters("left");
@@ -14,9 +17,13 @@ ImageProcessor::ImageProcessor() {
     
     // Load extrinsic parameters from CSV file
     loadExtrinsicParameters();
+    
+    // Initialize thread pool
+    initializeThreadPool();
 }
 
 ImageProcessor::~ImageProcessor() {
+    shutdownThreadPool();
 }
 
 cv::Mat ImageProcessor::loadImage(const std::string& filepath) {
@@ -882,4 +889,164 @@ cv::Mat ImageProcessor::createSurroundViewWithExtrinsics(const cv::Mat& front, c
     // For now, use the existing createSurroundView method
     // This can be enhanced to use extrinsic data for better alignment
     return createSurroundView(front, left, right, back);
+}
+
+// Multi-threading implementation
+void ImageProcessor::initializeThreadPool(size_t numThreads) {
+    if (m_threadPoolInitialized) {
+        return;
+    }
+    
+    m_numThreads = (numThreads == 0) ? std::thread::hardware_concurrency() : numThreads;
+    m_threadPoolInitialized = true;
+    
+    std::cout << "Initialized thread pool with " << m_numThreads << " threads" << std::endl;
+}
+
+void ImageProcessor::shutdownThreadPool() {
+    if (!m_threadPoolInitialized) {
+        return;
+    }
+    
+    m_threadPoolInitialized = false;
+    std::cout << "Thread pool shutdown complete" << std::endl;
+}
+
+void ImageProcessor::processImageAsync(const cv::Mat& input, const std::string& cameraName, std::promise<cv::Mat>&& promise) {
+    try {
+        // Perform undistortion with YAML parameters
+        cv::Mat undistorted = undistortWithYAMLParams(input, cameraName);
+        
+        // Apply camera-specific rotations
+        cv::Mat processed;
+        if (cameraName == "left") {
+            processed = rotateImage90CounterClockwise(undistorted);
+        } else if (cameraName == "right") {
+            processed = rotateImage90Clockwise(undistorted);
+        } else if (cameraName == "back") {
+            processed = rotateImage180(undistorted);
+        } else {
+            processed = undistorted; // front camera, no rotation
+        }
+        
+        promise.set_value(processed);
+    } catch (const std::exception& e) {
+        std::cerr << "Error processing " << cameraName << " camera: " << e.what() << std::endl;
+        promise.set_exception(std::current_exception());
+    }
+}
+
+cv::Mat ImageProcessor::createSurroundViewParallel(const cv::Mat& front, const cv::Mat& left, const cv::Mat& right, const cv::Mat& back) {
+    if (front.empty() || left.empty() || right.empty() || back.empty()) {
+        std::cerr << "One or more camera images are empty!" << std::endl;
+        return cv::Mat();
+    }
+    
+    if (!m_threadPoolInitialized) {
+        std::cout << "Thread pool not initialized, falling back to serial processing" << std::endl;
+        return createSurroundView(front, left, right, back);
+    }
+    
+    auto start_time = std::chrono::high_resolution_clock::now();
+    
+    // Create promises and futures for each camera
+    std::promise<cv::Mat> frontPromise, leftPromise, rightPromise, backPromise;
+    auto frontFuture = frontPromise.get_future();
+    auto leftFuture = leftPromise.get_future();
+    auto rightFuture = rightPromise.get_future();
+    auto backFuture = backPromise.get_future();
+    
+    // Launch async tasks for each camera
+    auto frontTask = std::async(std::launch::async, &ImageProcessor::processImageAsync, this, 
+                               std::cref(front), "front", std::move(frontPromise));
+    auto leftTask = std::async(std::launch::async, &ImageProcessor::processImageAsync, this, 
+                              std::cref(left), "left", std::move(leftPromise));
+    auto rightTask = std::async(std::launch::async, &ImageProcessor::processImageAsync, this, 
+                               std::cref(right), "right", std::move(rightPromise));
+    auto backTask = std::async(std::launch::async, &ImageProcessor::processImageAsync, this, 
+                              std::cref(back), "back", std::move(backPromise));
+    
+    // Wait for all tasks to complete and get results
+    cv::Mat processedFront, processedLeft, processedRight, processedBack;
+    
+    try {
+        processedFront = frontFuture.get();
+        processedLeft = leftFuture.get();
+        processedRight = rightFuture.get();
+        processedBack = backFuture.get();
+    } catch (const std::exception& e) {
+        std::cerr << "Error in parallel processing: " << e.what() << std::endl;
+        return cv::Mat();
+    }
+    
+    auto processing_time = std::chrono::high_resolution_clock::now();
+    auto processing_duration = std::chrono::duration_cast<std::chrono::milliseconds>(processing_time - start_time);
+    
+    // Use rectangular sections that preserve aspect ratio better and expand vertically
+    int baseWidth = 720;   // Base width for each section
+    int baseHeight = 640;  // Increased base height for each section (was 540)
+    
+    // Create different sized sections for better proportion:
+    // Front/Back: wider sections (landscape orientation) with more vertical space
+    // Left/Right: taller sections (portrait orientation after rotation)
+    int frontBackWidth = baseWidth + 120;   // 840 pixels wide
+    int frontBackHeight = baseHeight + 80;  // 720 pixels tall
+    int leftRightWidth = baseWidth;         // 720 pixels wide  
+    int leftRightHeight = baseHeight + 160; // 800 pixels tall
+    
+    // Resize images to their appropriate dimensions (can also be parallelized)
+    std::vector<std::future<void>> resizeTasks;
+    
+    resizeTasks.push_back(std::async(std::launch::async, [&]() {
+        cv::resize(processedFront, processedFront, cv::Size(frontBackWidth, frontBackHeight));
+    }));
+    
+    resizeTasks.push_back(std::async(std::launch::async, [&]() {
+        cv::resize(processedLeft, processedLeft, cv::Size(leftRightWidth, leftRightHeight));
+    }));
+    
+    resizeTasks.push_back(std::async(std::launch::async, [&]() {
+        cv::resize(processedRight, processedRight, cv::Size(leftRightWidth, leftRightHeight));
+    }));
+    
+    resizeTasks.push_back(std::async(std::launch::async, [&]() {
+        cv::resize(processedBack, processedBack, cv::Size(frontBackWidth, frontBackHeight));
+    }));
+    
+    // Wait for all resize operations to complete
+    for (auto& task : resizeTasks) {
+        task.wait();
+    }
+    
+    auto resize_time = std::chrono::high_resolution_clock::now();
+    auto resize_duration = std::chrono::duration_cast<std::chrono::milliseconds>(resize_time - processing_time);
+    
+    // Calculate surround view dimensions based on the new layout
+    int surroundWidth = frontBackWidth + leftRightWidth * 2;  // 840 + 720 + 720 = 2280
+    int surroundHeight = frontBackHeight + leftRightHeight + frontBackHeight; // 720 + 800 + 720 = 2240
+    cv::Mat surroundView = cv::Mat::zeros(surroundHeight, surroundWidth, CV_8UC3);
+    
+    // Define regions for each camera with proper proportions
+    cv::Rect leftRegion(0, frontBackHeight, leftRightWidth, leftRightHeight);
+    cv::Rect frontRegion(leftRightWidth, 0, frontBackWidth, frontBackHeight);
+    cv::Rect rightRegion(leftRightWidth + frontBackWidth, frontBackHeight, leftRightWidth, leftRightHeight);
+    cv::Rect backRegion(leftRightWidth, frontBackHeight + leftRightHeight, frontBackWidth, frontBackHeight);
+    
+    // Copy processed images to their respective regions
+    processedLeft.copyTo(surroundView(leftRegion));
+    processedFront.copyTo(surroundView(frontRegion));
+    processedRight.copyTo(surroundView(rightRegion));
+    processedBack.copyTo(surroundView(backRegion));
+    
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto total_duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    auto composition_duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - resize_time);
+    
+    std::cout << "Parallel processing times - Processing: " << processing_duration.count() 
+              << "ms, Resize: " << resize_duration.count() 
+              << "ms, Composition: " << composition_duration.count() 
+              << "ms, Total: " << total_duration.count() << "ms" << std::endl;
+    
+    std::cout << "Parallel surround view created - Size: " << surroundView.cols << "x" << surroundView.rows << std::endl;
+    return surroundView;
 }
