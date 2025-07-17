@@ -1,3 +1,18 @@
+/**
+ * @file main.cpp
+ * @brief Main application entry point for SurroundView3D
+ * 
+ * This application creates a real-time 3D surround view system for automotive applications.
+ * It processes multi-camera fisheye images to create a seamless bird's-eye view around
+ * a vehicle using OpenGL rendering and OpenCV image processing.
+ * 
+ * Features:
+ * - Real-time cylindrical projection for 360° surround view
+ * - Multi-threaded image processing pipeline
+ * - Camera calibration with YAML configuration
+ * - Interactive 3D visualization with car model
+ */
+
 #include "Renderer3D.h"
 #include "ImageProcessor.h"
 #include <iostream>
@@ -10,27 +25,24 @@
 int main() {
     std::cout << "Starting SurroundView3D Application..." << std::endl;
 
-    // Initialize renderer
+    // Initialize the 3D rendering system
     Renderer3D renderer(1200, 800);
     if (!renderer.initialize()) {
         std::cerr << "Failed to initialize renderer!" << std::endl;
         return -1;
     }
 
-    // Initialize image processor
+    // Initialize the image processing pipeline
     ImageProcessor imageProcessor;
     
-    // Load image sequences from all camera folders
+    // Configure camera image sequences (frames 1851-1999)
     std::vector<std::string> frontSequence, leftSequence, rightSequence, backSequence;
     std::string frontFolder = "assets/front/";
     std::string leftFolder = "assets/left/";
     std::string rightFolder = "assets/right/";
     std::string backFolder = "assets/back/";
     
-    // Debug: Print current working directory
-    std::cout << "Current working directory: " << std::filesystem::current_path() << std::endl;
-    
-    // Generate image paths for sequence 1851.png to 1999.png for all cameras
+    // Generate image file paths for the complete sequence
     for (int i = 1851; i <= 1999; ++i) {
         frontSequence.push_back(frontFolder + std::to_string(i) + ".png");
         leftSequence.push_back(leftFolder + std::to_string(i) + ".png");
@@ -40,7 +52,7 @@ int main() {
     
     std::cout << "Loading image sequences from all camera folders (" << frontSequence.size() << " images each)" << std::endl;
     
-    // Debug: Check if all camera folders exist
+    // Verify that all required camera folders exist
     std::vector<std::string> folders = {frontFolder, leftFolder, rightFolder, backFolder};
     std::vector<std::string> folderNames = {"Front", "Left", "Right", "Back"};
     bool allFoldersExist = true;

@@ -1,0 +1,7 @@
+# Performance Profiler Dependencies
+# Install with: pip install -r profiler_requirements.txt
+
+psutil>=5.9.0          # System and process monitoring
+GPUtil>=1.4.0          # GPU monitoring (NVIDIA)
+matplotlib>=3.5.0      # Real-time plotting and visualization
+numpy>=1.21.0          # Numerical operations for plotting

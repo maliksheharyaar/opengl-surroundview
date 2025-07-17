@@ -87,7 +87,7 @@ bool Shader::loadFromStrings(const std::string& vertexSource, const std::string&
         return false;
     }
     
-    // Delete the shaders as they're linked into our program now and no longer necessary
+    // Clean up shader objects after linking to program
     glDeleteShader(vertex);
     glDeleteShader(fragment);
     

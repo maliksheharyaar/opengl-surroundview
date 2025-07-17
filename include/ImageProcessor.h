@@ -1,3 +1,15 @@
+/**
+ * @file ImageProcessor.h
+ * @brief Advanced image processing pipeline for multi-camera surround view systems
+ * 
+ * This class provides comprehensive image processing capabilities including:
+ * - Fisheye lens undistortion with camera intrinsic parameters
+ * - Multi-threaded parallel processing for real-time performance
+ * - Cylindrical projection for seamless 360° surround view
+ * - Camera calibration using YAML configuration files
+ * - Advanced blending and stitching algorithms
+ */
+
 #pragma once
 
 #include <opencv2/opencv.hpp>
@@ -8,17 +20,21 @@
 #include <vector>
 #include <mutex>
 
+/**
+ * @class ImageProcessor
+ * @brief Main image processing engine for surround view generation
+ */
 class ImageProcessor {
 public:
     ImageProcessor();
     ~ImageProcessor();
 
-    // Load and process images
+    // Core image processing pipeline
     cv::Mat loadImage(const std::string& filepath);
-    cv::Mat processFullPipeline(const cv::Mat& input); // Undistort + Homography
+    cv::Mat processFullPipeline(const cv::Mat& input);
     cv::Mat createSurroundView(const cv::Mat& front, const cv::Mat& left, const cv::Mat& right, const cv::Mat& back);
     
-    // Multi-threaded processing
+    // Multi-threaded processing for performance optimization
     cv::Mat createSurroundViewParallel(const cv::Mat& front, const cv::Mat& left, const cv::Mat& right, const cv::Mat& back);
     void processImageAsync(const cv::Mat& input, const std::string& cameraName, std::promise<cv::Mat>&& promise);
     
@@ -26,77 +42,76 @@ public:
     void initializeThreadPool(size_t numThreads = std::thread::hardware_concurrency());
     void shutdownThreadPool();
     
-    // Generate test patterns for development
+    // Development and testing utilities
     cv::Mat generateTestGrid(int width = 800, int height = 600);
     cv::Mat generateCheckerboard(int width, int height, int squareSize = 50);
 
-    // Utility functions
+    // Basic image operations
     void saveImage(const cv::Mat& image, const std::string& filepath);
     cv::Mat preprocessImage(const cv::Mat& input);
     
-    // Perspective transformation
+    // Perspective transformation and bird's-eye view
     cv::Mat createBirdEyeView(const cv::Mat& input);
     cv::Mat applyPerspectiveTransform(const cv::Mat& input, const cv::Mat& transformMatrix);
     cv::Mat getDefaultPerspectiveMatrix(int width, int height);
     
-    // Fisheye undistortion
+    // Fisheye lens correction
     cv::Mat undistortFisheye(const cv::Mat& input);
     cv::Mat applyHomography(const cv::Mat& input);
     cv::Mat getFrontCameraHomography(int width, int height);
     
-    // Image rotation functions
+    // Image rotation utilities
     cv::Mat rotateImage90Clockwise(const cv::Mat& input);
     cv::Mat rotateImage90CounterClockwise(const cv::Mat& input);
     cv::Mat rotateImage180(const cv::Mat& input);
-
-    // Camera calibration from YAML files
+    // Camera calibration and distortion correction
     bool loadCameraParameters(const std::string& cameraName);
     cv::Mat undistortWithYAMLParams(const cv::Mat& input, const std::string& cameraName);
     
-    // Extrinsic camera parameters
+    // Extrinsic camera parameter handling
     bool loadExtrinsicParameters();
     cv::Mat getExtrinsicMatrix(const std::string& cameraName);
     cv::Vec3f getCameraPosition(const std::string& cameraName);
     cv::Vec3f getCameraRotation(const std::string& cameraName);
     cv::Mat createSurroundViewWithExtrinsics(const cv::Mat& front, const cv::Mat& left, const cv::Mat& right, const cv::Mat& back);
     
-    // Enhanced surround view with advanced warping and stitching
+    // Advanced surround view algorithms
     cv::Mat createSurroundViewWithWarping(const cv::Mat& front, const cv::Mat& left, const cv::Mat& right, const cv::Mat& back);
     cv::Mat createEnhancedSurroundView(const cv::Mat& front, const cv::Mat& left, const cv::Mat& right, const cv::Mat& back);
     
-    // Advanced image stitching and warping
+    // Computer vision-based stitching and warping
     cv::Mat calculateHomographyMatrix(const std::string& cameraName, const cv::Size& imageSize);
     cv::Mat applyBirdEyeProjection(const cv::Mat& input, const std::string& cameraName);
     cv::Mat createStitchingMask(const cv::Mat& image, const std::string& cameraName);
     
-    // Perspective warping for seamless surround view
+    // Perspective warping for seamless integration
     cv::Mat applyPerspectiveWarpingForSurroundView(const cv::Mat& input, const std::string& cameraName, cv::Size outputSize);
     
-    // Corner and edge detection for seamless stitching
+    // Feature detection and matching for stitching
     std::vector<cv::Point2f> findStitchingPoints(const cv::Mat& img1, const cv::Mat& img2);
     cv::Mat warpToCommonPlane(const cv::Mat& input, const std::string& fromCamera, const std::string& toCamera);
     
-    // Ground plane projection using extrinsics
+    // Ground plane projection algorithms
     cv::Mat projectToGroundPlane(const cv::Mat& input, const std::string& cameraName, float groundHeight = 0.0f);
     
-    // Image blending for seamless stitching
+    // Advanced blending techniques
     cv::Mat blendImages(const cv::Mat& img1, const cv::Mat& img2, const cv::Mat& mask1, const cv::Mat& mask2);
     
-    // Ground homography calculation for bird's-eye view
+    // Homography calculation for bird's-eye view transformation
     cv::Mat calculateGroundHomography(const std::string& cameraView, const cv::Size& imageSize, float groundHeight = 0.0f);
 
-    // Camera-specific cropping to remove car frame/body parts
+    // Camera-specific image enhancement
     cv::Mat applyCameraSpecificCropping(const cv::Mat& image, const std::string& cameraName);
     cv::Mat applyPerspectiveCorrection(const cv::Mat& input, const std::string& cameraName);
     cv::Mat projectToBirdEye(const cv::Mat& input, const std::string& cameraName, float groundPlaneHeight = 0.0f);
 
-    // Seamless surround view without rigid grid structure
+    // Seamless surround view generation
     cv::Mat createSeamlessSurroundView(const cv::Mat& front, const cv::Mat& left, const cv::Mat& right, const cv::Mat& back);
     
-    // Helper for seamless blending
+    // Advanced blending helper functions
     void placeImageWithMask(const cv::Mat& image, const cv::Mat& mask, cv::Mat& contribution, cv::Mat& totalWeights, int startX, int startY);
 
-    // Computer vision-based seamless stitching with dynamic warping
+    // Cylindrical projection for 360° surround view
     cv::Mat createCylindricalSurroundView(const cv::Mat& front, const cv::Mat& left, const cv::Mat& right, const cv::Mat& back);
     
     // Cylindrical projection for seamless panoramic stitching

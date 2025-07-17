@@ -15,12 +15,12 @@ glm::mat4 Camera::getProjectionMatrix(float aspectRatio) const {
 }
 
 void Camera::processKeyboard(int direction, float deltaTime) {
-    // Keyboard movement disabled - camera position is fixed
+    // Camera movement is disabled - position remains fixed for surround view
     // Only zoom via scroll wheel is allowed
 }
 
 void Camera::processMouseMovement(float xoffset, float yoffset, bool constrainPitch) {
-    // Mouse movement disabled - camera orientation is fixed looking down
+    // Mouse orientation control is disabled - camera maintains fixed top-down view
 }
 
 void Camera::processMouseScroll(float yoffset) {

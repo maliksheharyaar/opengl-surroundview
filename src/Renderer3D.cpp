@@ -259,7 +259,7 @@ void Renderer3D::render() {
         // Use GLB model if loaded successfully - let Model class handle all shader settings
         m_carModel->draw(*m_shader);
     }
-    // Remove fallback car mesh to avoid double rendering
+    // Ensure fallback car mesh is not double-rendered when GLB model is loaded
 #endif
     
     // Re-enable texture for future renders
@@ -274,7 +274,7 @@ void Renderer3D::updateTexture(const cv::Mat& image) {
         return;
     }
 
-    // Remove the flip to correct the orientation
+    // Correct orientation by applying rotation transformation
     std::cout << "Updating texture - Size: " << image.cols << "x" << image.rows 
               << ", Channels: " << image.channels() << std::endl;
 
@@ -305,15 +305,15 @@ void Renderer3D::updateTexture(const cv::Mat& image) {
 }
 
 void Renderer3D::updateCamera(float deltaTime) {
-    // Removed keyboard input handling - only zoom allowed via scroll wheel
-    // Camera position is fixed directly above the model
+    // Input handling: Only zoom control via scroll wheel is enabled
+    // Camera position and orientation are fixed for optimal surround view
 }
 
 void Renderer3D::setupInputCallbacks() {
     // Only set scroll callback for zoom functionality
     glfwSetScrollCallback(m_window, scrollCallback);
     glfwSetKeyCallback(m_window, keyCallback);
-    // Remove mouse cursor callback and keep cursor visible
+    // Mouse cursor remains visible for user interaction
     glfwSetInputMode(m_window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 }
 

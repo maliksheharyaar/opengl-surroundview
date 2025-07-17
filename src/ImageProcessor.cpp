@@ -187,13 +187,8 @@ cv::Mat ImageProcessor::getFrontCameraHomography(int width, int height) {
 cv::Mat ImageProcessor::undistortFisheye(const cv::Mat& input) {
     if (input.empty()) return input;
     
-    std::cout << "DEBUG: Fisheye undistortion - Input size: " << input.cols << "x" << input.rows << std::endl;
-    
     cv::Mat cameraMatrix, distCoeffs;
     getFisheyeCameraParams(cameraMatrix, distCoeffs, input.size());
-    
-    std::cout << "DEBUG: Camera matrix: " << cameraMatrix << std::endl;
-    std::cout << "DEBUG: Distortion coeffs: " << distCoeffs.t() << std::endl;
     
     cv::Mat undistorted;
     try {
@@ -213,11 +208,6 @@ cv::Mat ImageProcessor::undistortFisheye(const cv::Mat& input) {
         cv::Rect cropRect(startX, startY, fullWidth, keepHeight);
         cv::Mat cropped = undistorted(cropRect).clone();
         
-        std::cout << "DEBUG: Cropping - Original: " << undistorted.rows << "x" << undistorted.cols 
-                  << " -> Cropped: " << keepHeight << "x" << fullWidth 
-                  << " (removed bottom " << (undistorted.rows - keepHeight) << " pixels, " 
-                  << (100 * (1 - keepRatio)) << "% of image)" << std::endl;
-        
         // Resize back to original dimensions to maintain consistency
         cv::Mat final;
         cv::resize(cropped, final, undistorted.size(), 0, 0, cv::INTER_LINEAR);
@@ -231,7 +221,6 @@ cv::Mat ImageProcessor::undistortFisheye(const cv::Mat& input) {
             return input;
         }
         
-        std::cout << "DEBUG: Fisheye undistortion + cropping successful - Removed bottom " << (undistorted.rows - keepHeight) << " pixels" << std::endl;
         return final;
         
     } catch (const cv::Exception& e) {
@@ -486,16 +475,9 @@ cv::Mat ImageProcessor::undistortWithYAMLParams(const cv::Mat& input, const std:
         return input;
     }
     
-    std::cout << "DEBUG: Undistorting with camera_intrinsics.yml params for camera: " << cameraName << std::endl;
-    std::cout << "DEBUG: Input size: " << input.cols << "x" << input.rows << std::endl;
-    
     cv::Mat cameraMatrix = cameraMatrices[cameraName];
     cv::Mat distCoeffs = distortionCoeffs[cameraName];
     double xi = xiParams[cameraName];
-    
-    std::cout << "DEBUG: Camera matrix (K): " << cameraMatrix << std::endl;
-    std::cout << "DEBUG: Distortion coeffs (D): " << distCoeffs.t() << std::endl;
-    std::cout << "DEBUG: Xi parameter: " << xi << std::endl;
     
     cv::Mat undistorted;
     try {
@@ -504,8 +486,6 @@ cv::Mat ImageProcessor::undistortWithYAMLParams(const cv::Mat& input, const std:
         
         // For high xi values (omnidirectional/fisheye), be much more aggressive
         if (xi > 0.5) {
-            std::cout << "DEBUG: High xi parameter detected (" << xi << "), applying aggressive fisheye undistortion" << std::endl;
-            
             // Use front camera's successful undistortion parameters for all cameras
             // Significantly reduce focal length to zoom out and capture wider field after undistortion
             newCameraMatrix.at<double>(0, 0) *= 0.45; // fx (45% of original - same as front)
@@ -514,9 +494,7 @@ cv::Mat ImageProcessor::undistortWithYAMLParams(const cv::Mat& input, const std:
             // Use fisheye undistortion for all cameras since it works well for front camera
             try {
                 cv::fisheye::undistortImage(input, undistorted, cameraMatrix, distCoeffs, newCameraMatrix);
-                std::cout << "DEBUG: Using fisheye undistortion model for camera: " << cameraName << std::endl;
-            } catch (const cv::Exception& fe) {
-                std::cout << "DEBUG: Fisheye undistortion failed, trying standard undistortion: " << fe.what() << std::endl;
+            } catch (const cv::Exception&) {
                 cv::undistort(input, undistorted, cameraMatrix, distCoeffs, newCameraMatrix);
             }
         } else {
@@ -525,12 +503,6 @@ cv::Mat ImageProcessor::undistortWithYAMLParams(const cv::Mat& input, const std:
             newCameraMatrix.at<double>(1, 1) *= 0.6; // fy (60% of original)
             cv::undistort(input, undistorted, cameraMatrix, distCoeffs, newCameraMatrix);
         }
-        
-        // Remove the additional perspective correction for side cameras since 
-        // we're now using the same undistortion approach as the front camera
-        // if (cameraName == "left" || cameraName == "right") {
-        //     undistorted = applyPerspectiveCorrection(undistorted, cameraName);
-        // }
         
         // Enhanced cropping to remove car frame/body parts more effectively
         cv::Mat cropped = applyCameraSpecificCropping(undistorted, cameraName);
@@ -541,9 +513,6 @@ cv::Mat ImageProcessor::undistortWithYAMLParams(const cv::Mat& input, const std:
         
         cv::Mat final = cropped;
         if (scale.x != 1.0f || scale.y != 1.0f || shift.x != 0.0f || shift.y != 0.0f) {
-            std::cout << "DEBUG: Applying scale (" << scale.x << ", " << scale.y 
-                      << ") and shift (" << shift.x << ", " << shift.y << ")" << std::endl;
-            
             cv::Size newSize(static_cast<int>(cropped.cols * scale.x), 
                            static_cast<int>(cropped.rows * scale.y));
             cv::resize(cropped, final, newSize);
@@ -563,7 +532,6 @@ cv::Mat ImageProcessor::undistortWithYAMLParams(const cv::Mat& input, const std:
             return input;
         }
         
-        std::cout << "DEBUG: Aggressive fisheye undistortion successful for camera: " << cameraName << std::endl;
         return final;
         
     } catch (const cv::Exception& e) {
@@ -723,8 +691,6 @@ cv::Mat ImageProcessor::applyCameraSpecificCropping(const cv::Mat& image, const 
     int height = image.rows;
     cv::Rect cropRect;
     
-    std::cout << "DEBUG: Applying aggressive cropping for " << cameraName << " (size: " << width << "x" << height << ")" << std::endl;
-    
     if (cameraName == "front") {
         // For front camera: remove bottom portion (car hood) and sides
         int cropTop = static_cast<int>(height * 0.15);    // Remove top 15%
@@ -791,8 +757,6 @@ cv::Mat ImageProcessor::applyCameraSpecificCropping(const cv::Mat& image, const 
     }
     
     cv::Mat cropped = image(cropRect);
-    std::cout << "DEBUG: Cropped " << cameraName << " from " << width << "x" << height 
-              << " to " << cropped.cols << "x" << cropped.rows << std::endl;
     
     return cropped;
 }
@@ -877,12 +841,11 @@ cv::Mat ImageProcessor::projectToBirdEye(const cv::Mat& input, const std::string
     cv::Mat extrinsic = getExtrinsicMatrix(cameraName);
     cv::Mat K = itK->second;
     
-    // Create bird's eye view transformation
-    // This is a simplified projection - you may need to adjust based on your specific requirements
+    // Create bird's-eye view transformation
+    // Future enhancement: Implement proper homography calculation using extrinsics
     cv::Mat output;
     
-    // For now, return the undistorted input as placeholder
-    // You can enhance this with proper homography calculation using extrinsics
+    // Currently returns undistorted input as placeholder implementation
     return input;
 }
 
