@@ -97,6 +97,46 @@ cd build/Release
 
 ## Technical Details
 
+### OpenGL vs 2D Python Implementation Differences
+
+**Important Note**: This OpenGL-based surround view implementation differs significantly from traditional 2D Python surround view projects, even though both use OpenCV:
+
+- **Coordinate Systems**: 
+  - **2D Python**: Works in image/pixel coordinates (Y-axis points down, origin at top-left)
+  - **OpenGL 3D**: Uses world coordinates (Y-axis points up, origin at center, right-handed system)
+  - **Stitching Approach**: Direct pixel manipulation vs 3D texture mapping on geometric planes
+
+- **Processing Pipeline**:
+  - **2D Python**: Direct image stitching using homography matrices and pixel-level blending
+  - **OpenGL 3D**: 3D scene rendering with texture-mapped geometry and hardware acceleration
+
+- **Transformation Matrices**: 
+  - Matrix calculations must account for coordinate system flipping (Y-axis inversion)
+  - 3D perspective projections vs 2D homography transformations
+
+### CPU vs GPU Task Distribution
+
+#### CPU-Based Operations (OpenCV + C++)
+- **Image Loading**: File I/O and initial image decoding
+- **Fisheye Undistortion**: OpenCV `remap()` operations for lens correction
+- **Image Preprocessing**: 
+  - Color space conversion (BGR → RGB)
+  - Image rotation (90°, 180° transformations)
+  - Cropping to remove vehicle frame
+- **Layout Composition**: Stitching multiple camera views into unified surround view
+- **Camera Calibration**: YAML/CSV file parsing and parameter loading
+- **Memory Management**: Image buffer allocation and data transfer preparation
+
+#### GPU-Based Operations (OpenGL Shaders)
+- **3D Rendering Pipeline**: Vertex and fragment shader execution
+- **Texture Mapping**: Hardware-accelerated texture sampling and filtering
+- **Geometric Transformations**: Matrix operations for 3D model positioning
+- **Lighting Calculations**: 
+  - Ambient and directional lighting for car model
+  - Selective lighting (unlit rendering for surround view plane)
+- **Real-time Display**: Frame buffer operations and screen rendering
+- **Perspective Projection**: 3D to 2D coordinate transformation
+
 ### Image Processing Pipeline
 1. **Fisheye Undistortion**: Uses camera intrinsic parameters (K matrix, distortion coefficients, xi) to correct lens distortion
 2. **Cropping**: Automatically removes vehicle frame from images using optimized crop regions
@@ -129,10 +169,22 @@ front,0.0,2.5,1.5,0.0,0.0,0.0,400,400,320,240,-0.2,0.1,0,0
 
 ## Performance Notes
 
-- **GPU Acceleration**: Leverages OpenGL compute shaders for parallel processing
-- **Memory Efficiency**: Optimized texture management and mesh generation
-- **Real-time Processing**: Designed for 30+ FPS with multiple camera inputs
-- **Scalable Architecture**: Modular design allows easy addition of new features
+### CPU Performance
+- **OpenCV Operations**: Single-threaded fisheye undistortion and image processing
+- **Memory Bandwidth**: CPU-GPU data transfer for texture updates
+- **I/O Operations**: File loading and camera parameter parsing
+- **Image Composition**: Multi-camera view stitching and layout arrangement
+
+### GPU Performance  
+- **Hardware Acceleration**: Parallel processing of vertices and fragments
+- **Texture Memory**: Optimized texture caching and sampling
+- **Shader Execution**: Simultaneous processing of multiple pixels/vertices
+- **Real-time Rendering**: 30+ FPS with multiple camera inputs
+
+### Architecture Benefits
+- **Hybrid Processing**: CPU handles complex image algorithms, GPU handles rendering
+- **Scalable Design**: Modular pipeline allows independent optimization of CPU/GPU tasks
+- **Memory Efficiency**: Minimized CPU-GPU transfers through optimized texture management
 
 ## Troubleshooting
 
@@ -141,6 +193,15 @@ front,0.0,2.5,1.5,0.0,0.0,0.0,400,400,320,240,-0.2,0.1,0,0
 - **Distorted images**: Verify camera intrinsic parameters in YAML file
 - **Missing textures**: Ensure GLB model contains embedded materials
 - **Build errors**: Check vcpkg installation and OpenCV/OpenGL dependencies
+- **Coordinate system issues**: Remember Y-axis inversion between OpenCV (down) and OpenGL (up)
+- **Performance bottlenecks**: Monitor CPU usage for image processing vs GPU usage for rendering
+
+### Migration from 2D Python Surround View
+If adapting from a 2D Python implementation:
+- **Matrix Transformations**: Invert Y-coordinates and adjust homography matrices
+- **Image Coordinates**: Convert from pixel-based to normalized texture coordinates
+- **Stitching Logic**: Replace direct pixel manipulation with 3D texture mapping
+- **Calibration Data**: May need to adjust camera parameters for 3D coordinate system
 
 ### System Requirements
 - **GPU**: OpenGL 4.5+ compatible graphics card
