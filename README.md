@@ -16,9 +16,11 @@ A real-time 3D surround view system for automotive applications using OpenGL and
   - Unified calibration system with YAML configuration
 - **Computer Vision Cylindrical Projection**: 
   - Seamless 360° surround view with dynamic warping
-  - Unified projection parameters across all cameras
-  - Advanced angular blending for smooth transitions
-  - Increased cylinder scaling (2400x1200) for reduced compression
+  - Canvas size: 2400x1200 pixels with 360px base radius
+  - Unified projection parameters (0.3f horizontal factor) across all cameras
+  - Advanced angular blending with 30px blend zones for smooth transitions
+  - Angular sector mapping: Front (225°-315°), Left (315°-45°), Back (45°-135°), Right (135°-225°)
+  - Inner radius: 100px (car space), Outer radius: 360px (image boundary)
 - **3D Car Model Rendering**: GLB model support with material colors and lighting
 - **Camera Calibration**: 
   - Intrinsic parameters from `camera_intrinsics.yml`
@@ -185,18 +187,31 @@ front,0.0,2.5,1.5,0.0,0.0,0.0,400,400,320,240,-0.2,0.1,0,0
 The application features an advanced computer vision-based cylindrical projection system for seamless 360° surround view:
 
 **Key Features**:
-- **Unified Projections**: All cameras use identical projection parameters for consistent field of view
-- **Angular Sector Mapping**: Cameras are mapped to specific angular ranges (90° sectors with overlap)
+- **Unified Projections**: All cameras use identical 0.3f horizontal factor for consistent field of view
+- **Angular Sector Mapping**: Cameras mapped to 90° sectors with 30px overlap zones
 - **Dynamic Warping**: Real-time cylindrical coordinate transformation with bilinear interpolation
-- **Advanced Blending**: 30-pixel blend zones with smooth step functions for seamless transitions
-- **High Resolution**: 2400x1200 canvas with 360.0f base radius for reduced compression
+- **Advanced Blending**: 30px blend zones with smooth step functions for seamless transitions
+- **High Resolution**: 2400x1200 canvas with 360px base radius for optimal quality
 
 **Technical Implementation**:
-- **Horizontal Mapping**: `imgX = cols * (0.5f + 0.3f * normalizedOffset)` for all cameras
+- **Canvas Size**: 2400x1200 pixels for reduced compression
+- **Base Radius**: 360px outer boundary, 100px inner boundary (car space)
+- **Horizontal Mapping**: `imgX = cols * (0.5f + 0.3f * normalizedOffset)` unified for all cameras
 - **Vertical Mapping**: `imgY = rows * (0.25f + 0.5f * radialFactor)` for consistent perspective
-- **Angular Coverage**: Front (225°-315°), Left (315°-45°), Back (45°-135°), Right (135°-225°)
-- **Cylindrical Radius**: Inner radius 100px (space around car), outer radius 360px (image boundary)
-- **Blending Algorithm**: Radial falloff combined with angular sector blending for smooth transitions
+- **Angular Coverage**: 
+  - Front: 225°-315° (centered at 270°/top)
+  - Left: 315°-45° (centered at 0°/right side)
+  - Back: 45°-135° (centered at 90°/bottom)  
+  - Right: 135°-225° (centered at 180°/left side)
+- **Blending Algorithm**: Radial falloff combined with angular sector blending
+- **Car Model Scale**: 0.01f scaling factor for proportional representation
+
+**Performance Characteristics**:
+- **Frame Processing**: Sequential image processing (149 frames: 1851-1999.png)
+- **Target Frame Rate**: 30 FPS playback of recorded sequences
+- **Actual Performance**: Variable based on hardware, typically 5-15 FPS with full pipeline
+- **Pipeline Complexity**: Fisheye undistortion + cylindrical projection + blending per frame
+- **Memory Usage**: ~50MB for image sequences + GPU texture memory
 
 ## Performance Notes
 
@@ -204,16 +219,16 @@ The application features an advanced computer vision-based cylindrical projectio
 - **Multi-threaded Processing**: Parallel undistortion and preprocessing of all 4 camera feeds
 - **Thread Pool**: Automatic detection and utilization of available CPU cores
 - **Cylindrical Projection**: Computer vision-based seamless surround view with unified camera projections
-- **OpenCV Operations**: Optimized single-threaded fisheye undistortion per camera
+- **Image Processing**: Sequential processing per frame (fisheye correction → rotation → cylindrical mapping)
 - **Memory Bandwidth**: Efficient CPU-GPU data transfer for texture updates
-- **I/O Operations**: File loading and camera parameter parsing
-- **Image Composition**: Parallel resize operations and advanced angular blending for 360° view
+- **I/O Operations**: Sequential loading of 149 images per camera (1851-1999.png)
+- **Performance Impact**: Complex pipeline reduces effective frame rate from 30 FPS target to 5-15 FPS actual
 
 ### GPU Performance  
 - **Hardware Acceleration**: Parallel processing of vertices and fragments
 - **Texture Memory**: Optimized texture caching and sampling
 - **Shader Execution**: Simultaneous processing of multiple pixels/vertices
-- **Real-time Rendering**: 30+ FPS with multiple camera inputs
+- **Real-time Rendering**: Interactive frame rates with complex image processing pipeline
 
 ### Architecture Benefits
 - **Hybrid Processing**: CPU handles complex image algorithms with multi-threading, GPU handles rendering
@@ -231,8 +246,9 @@ The application features an advanced computer vision-based cylindrical projectio
 - **Coordinate system issues**: Remember Y-axis inversion between OpenCV (down) and OpenGL (up)
 - **Cylindrical view gaps**: Check angular sector definitions and blending zone coverage
 - **Uneven camera projections**: Ensure all cameras use unified projection parameters (0.3f factor)
-- **Compression artifacts**: Verify cylinder scaling settings (2400x1200 canvas, 360.0f radius)
-- **Performance bottlenecks**: Monitor CPU usage for image processing vs GPU usage for rendering
+- **Performance issues**: Complex pipeline (fisheye + cylindrical + blending) reduces frame rate significantly
+- **Memory usage**: Large image sequences require substantial RAM for smooth playback
+- **Canvas artifacts**: Verify 2400x1200 canvas size and 360px radius settings for optimal quality
 
 ### Migration from 2D Python Surround View
 If adapting from a 2D Python implementation:
@@ -243,6 +259,7 @@ If adapting from a 2D Python implementation:
 
 ### System Requirements
 - **GPU**: OpenGL 4.5+ compatible graphics card
-- **RAM**: Minimum 4GB, recommended 8GB+
-- **Storage**: ~2GB for full project with images
+- **RAM**: Minimum 4GB, recommended 8GB+ for image sequence processing
+- **Storage**: ~2GB for full project with image sequences (149 frames × 4 cameras)
+- **CPU**: Multi-core processor recommended for parallel image processing
 - **OS**: Windows 10/11 (tested), Linux support via CMake
