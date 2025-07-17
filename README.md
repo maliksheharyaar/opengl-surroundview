@@ -2,6 +2,10 @@
 
 A real-time 3D surround view system for automotive applications using OpenGL and OpenCV. This application processes multi-camera fisheye images to create a seamless bird's-eye view around a vehicle with proper calibration and undistortion.
 
+![SurroundView3D Demo](assets/Car_render.gif)
+
+*Real-time 3D surround view rendering with fisheye camera undistortion and car model visualization*
+
 ## Features
 
 - **Real-time 3D Visualization**: Interactive top-down surround view with zoom controls
@@ -143,22 +147,3 @@ front,0.0,2.5,1.5,0.0,0.0,0.0,400,400,320,240,-0.2,0.1,0,0
 - **RAM**: Minimum 4GB, recommended 8GB+
 - **Storage**: ~2GB for full project with images
 - **OS**: Windows 10/11 (tested), Linux support via CMake
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Acknowledgments
-
-- Camera calibration algorithms based on OpenCV implementations
-- 3D rendering techniques inspired by automotive industry standards
-- GLB model loading via Assimp library
-- Fisheye undistortion methods adapted for automotive applications
