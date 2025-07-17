@@ -14,6 +14,11 @@ A real-time 3D surround view system for automotive applications using OpenGL and
   - Fisheye lens undistortion using camera intrinsics
   - Automatic cropping to remove vehicle frame
   - Unified calibration system with YAML configuration
+- **Computer Vision Cylindrical Projection**: 
+  - Seamless 360° surround view with dynamic warping
+  - Unified projection parameters across all cameras
+  - Advanced angular blending for smooth transitions
+  - Increased cylinder scaling (2400x1200) for reduced compression
 - **3D Car Model Rendering**: GLB model support with material colors and lighting
 - **Camera Calibration**: 
   - Intrinsic parameters from `camera_intrinsics.yml`
@@ -143,8 +148,13 @@ cd build/Release
 1. **Parallel Fisheye Undistortion**: Uses camera intrinsic parameters (K matrix, distortion coefficients, xi) to correct lens distortion across all 4 cameras simultaneously
 2. **Concurrent Image Preprocessing**: Simultaneous rotation and cropping operations for each camera feed
 3. **Parallel Resize Operations**: Multi-threaded resizing to optimize layout composition
-4. **Layout Composition**: Combines four camera views into a unified surround view with proper aspect ratios
-5. **Texture Mapping**: Maps processed images onto a 3D plane mesh for seamless rendering
+4. **Cylindrical Projection**: Computer vision-based seamless 360° surround view with:
+   - Unified projection parameters for all cameras (0.3f horizontal factor)
+   - Dynamic angular sector mapping (Front: 225°-315°, Left: 315°-45°, Back: 45°-135°, Right: 135°-225°)
+   - Advanced blending with 30.0f blend zones for smooth transitions
+   - Increased cylinder scaling (2400x1200 canvas, 360.0f base radius) for reduced compression
+5. **Layout Composition**: Combines four camera views into a unified surround view with proper aspect ratios
+6. **Texture Mapping**: Maps processed images onto a 3D plane mesh for seamless rendering
 
 ### Rendering Pipeline
 - **Selective Lighting**: Car model receives full ambient and directional lighting, while surround view plane uses unlit rendering
@@ -170,15 +180,34 @@ front,0.0,2.5,1.5,0.0,0.0,0.0,400,400,320,240,-0.2,0.1,0,0
 # Positions relative to vehicle center (rear axle)
 ```
 
+### Cylindrical Surround View System
+
+The application features an advanced computer vision-based cylindrical projection system for seamless 360° surround view:
+
+**Key Features**:
+- **Unified Projections**: All cameras use identical projection parameters for consistent field of view
+- **Angular Sector Mapping**: Cameras are mapped to specific angular ranges (90° sectors with overlap)
+- **Dynamic Warping**: Real-time cylindrical coordinate transformation with bilinear interpolation
+- **Advanced Blending**: 30-pixel blend zones with smooth step functions for seamless transitions
+- **High Resolution**: 2400x1200 canvas with 360.0f base radius for reduced compression
+
+**Technical Implementation**:
+- **Horizontal Mapping**: `imgX = cols * (0.5f + 0.3f * normalizedOffset)` for all cameras
+- **Vertical Mapping**: `imgY = rows * (0.25f + 0.5f * radialFactor)` for consistent perspective
+- **Angular Coverage**: Front (225°-315°), Left (315°-45°), Back (45°-135°), Right (135°-225°)
+- **Cylindrical Radius**: Inner radius 100px (space around car), outer radius 360px (image boundary)
+- **Blending Algorithm**: Radial falloff combined with angular sector blending for smooth transitions
+
 ## Performance Notes
 
 ### CPU Performance
 - **Multi-threaded Processing**: Parallel undistortion and preprocessing of all 4 camera feeds
 - **Thread Pool**: Automatic detection and utilization of available CPU cores
+- **Cylindrical Projection**: Computer vision-based seamless surround view with unified camera projections
 - **OpenCV Operations**: Optimized single-threaded fisheye undistortion per camera
 - **Memory Bandwidth**: Efficient CPU-GPU data transfer for texture updates
 - **I/O Operations**: File loading and camera parameter parsing
-- **Image Composition**: Parallel resize operations and sequential layout arrangement
+- **Image Composition**: Parallel resize operations and advanced angular blending for 360° view
 
 ### GPU Performance  
 - **Hardware Acceleration**: Parallel processing of vertices and fragments
@@ -200,6 +229,9 @@ front,0.0,2.5,1.5,0.0,0.0,0.0,400,400,320,240,-0.2,0.1,0,0
 - **Missing textures**: Ensure GLB model contains embedded materials
 - **Build errors**: Check vcpkg installation and OpenCV/OpenGL dependencies
 - **Coordinate system issues**: Remember Y-axis inversion between OpenCV (down) and OpenGL (up)
+- **Cylindrical view gaps**: Check angular sector definitions and blending zone coverage
+- **Uneven camera projections**: Ensure all cameras use unified projection parameters (0.3f factor)
+- **Compression artifacts**: Verify cylinder scaling settings (2400x1200 canvas, 360.0f radius)
 - **Performance bottlenecks**: Monitor CPU usage for image processing vs GPU usage for rendering
 
 ### Migration from 2D Python Surround View
