@@ -797,69 +797,70 @@ cv::Mat ImageProcessor::applyCameraSpecificCropping(const cv::Mat& image, const 
     return cropped;
 }
 
-// Additional perspective correction for side cameras to reduce U-shaped fisheye warping
-cv::Mat ImageProcessor::applyPerspectiveCorrection(const cv::Mat& input, const std::string& cameraName) {
-    if (input.empty()) return input;
+// Apply perspective warping for seamless surround view with proper stretching
+cv::Mat ImageProcessor::applyPerspectiveWarpingForSurroundView(const cv::Mat& input, const std::string& cameraName, cv::Size outputSize) {
+    if (input.empty()) return cv::Mat();
     
-    std::cout << "DEBUG: Applying perspective correction for " << cameraName << " to reduce U-shaped warping" << std::endl;
+    // Define source points (corners of the input image)
+    std::vector<cv::Point2f> srcPoints = {
+        cv::Point2f(0, 0),                        // Top-left
+        cv::Point2f(input.cols - 1, 0),           // Top-right
+        cv::Point2f(input.cols - 1, input.rows - 1), // Bottom-right
+        cv::Point2f(0, input.rows - 1)            // Bottom-left
+    };
     
-    cv::Mat output;
-    cv::Size size = input.size();
+    // Define destination points based on camera position for bird's-eye warping
+    std::vector<cv::Point2f> dstPoints;
     
-    // Define source and destination points for perspective transformation
-    std::vector<cv::Point2f> srcPoints, dstPoints;
-    
-    if (cameraName == "left") {
-        // For left camera: correct the rightward curve of the car frame
-        srcPoints = {
-            cv::Point2f(size.width * 0.1, size.height * 0.2),   // Top-left
-            cv::Point2f(size.width * 0.9, size.height * 0.1),   // Top-right (pull inward)
-            cv::Point2f(size.width * 0.1, size.height * 0.8),   // Bottom-left
-            cv::Point2f(size.width * 0.9, size.height * 0.9)    // Bottom-right (pull inward)
-        };
-        
+    if (cameraName == "front") {
+        // Front camera: stretch outward and upward for bird's-eye view
         dstPoints = {
-            cv::Point2f(size.width * 0.1, size.height * 0.2),   // Top-left (unchanged)
-            cv::Point2f(size.width * 0.8, size.height * 0.1),   // Top-right (straightened)
-            cv::Point2f(size.width * 0.1, size.height * 0.8),   // Bottom-left (unchanged)
-            cv::Point2f(size.width * 0.8, size.height * 0.9)    // Bottom-right (straightened)
+            cv::Point2f(outputSize.width * 0.1f, 0),                           // Stretch top-left outward
+            cv::Point2f(outputSize.width * 0.9f, 0),                           // Stretch top-right outward
+            cv::Point2f(outputSize.width * 0.7f, outputSize.height * 0.8f),    // Pull bottom-right inward
+            cv::Point2f(outputSize.width * 0.3f, outputSize.height * 0.8f)     // Pull bottom-left inward
+        };
+    }
+    else if (cameraName == "back") {
+        // Back camera: stretch outward and downward for bird's-eye view
+        dstPoints = {
+            cv::Point2f(outputSize.width * 0.3f, outputSize.height * 0.2f),    // Pull top-left inward
+            cv::Point2f(outputSize.width * 0.7f, outputSize.height * 0.2f),    // Pull top-right inward
+            cv::Point2f(outputSize.width * 0.9f, outputSize.height),           // Stretch bottom-right outward
+            cv::Point2f(outputSize.width * 0.1f, outputSize.height)            // Stretch bottom-left outward
+        };
+    }
+    else if (cameraName == "left") {
+        // Left camera: stretch outward and to the left
+        dstPoints = {
+            cv::Point2f(0, outputSize.height * 0.1f),                          // Stretch top-left outward
+            cv::Point2f(outputSize.width * 0.8f, outputSize.height * 0.3f),    // Pull top-right inward
+            cv::Point2f(outputSize.width * 0.8f, outputSize.height * 0.7f),    // Pull bottom-right inward
+            cv::Point2f(0, outputSize.height * 0.9f)                           // Stretch bottom-left outward
         };
     }
     else if (cameraName == "right") {
-        // For right camera: correct the leftward curve of the car frame
-        srcPoints = {
-            cv::Point2f(size.width * 0.1, size.height * 0.1),   // Top-left (pull inward)
-            cv::Point2f(size.width * 0.9, size.height * 0.2),   // Top-right
-            cv::Point2f(size.width * 0.1, size.height * 0.9),   // Bottom-left (pull inward)
-            cv::Point2f(size.width * 0.9, size.height * 0.8)    // Bottom-right
-        };
-        
+        // Right camera: stretch outward and to the right
         dstPoints = {
-            cv::Point2f(size.width * 0.2, size.height * 0.1),   // Top-left (straightened)
-            cv::Point2f(size.width * 0.9, size.height * 0.2),   // Top-right (unchanged)
-            cv::Point2f(size.width * 0.2, size.height * 0.9),   // Bottom-left (straightened)
-            cv::Point2f(size.width * 0.9, size.height * 0.8)    // Bottom-right (unchanged)
+            cv::Point2f(outputSize.width * 0.2f, outputSize.height * 0.3f),    // Pull top-left inward
+            cv::Point2f(outputSize.width, outputSize.height * 0.1f),           // Stretch top-right outward
+            cv::Point2f(outputSize.width, outputSize.height * 0.9f),           // Stretch bottom-right outward
+            cv::Point2f(outputSize.width * 0.2f, outputSize.height * 0.7f)     // Pull bottom-left inward
         };
     }
     else {
-        // No perspective correction needed for front/back cameras
-        return input;
+        // Default: no warping
+        dstPoints = srcPoints;
     }
     
-    try {
-        // Calculate perspective transformation matrix
-        cv::Mat perspectiveMatrix = cv::getPerspectiveTransform(srcPoints, dstPoints);
-        
-        // Apply perspective transformation
-        cv::warpPerspective(input, output, perspectiveMatrix, size, cv::INTER_LINEAR);
-        
-        std::cout << "DEBUG: Perspective correction applied successfully for " << cameraName << std::endl;
-        return output;
-        
-    } catch (const cv::Exception& e) {
-        std::cerr << "ERROR: Perspective correction failed for " << cameraName << ": " << e.what() << std::endl;
-        return input;
-    }
+    // Calculate perspective transformation matrix
+    cv::Mat perspectiveMatrix = cv::getPerspectiveTransform(srcPoints, dstPoints);
+    
+    // Apply perspective transformation
+    cv::Mat warpedImage;
+    cv::warpPerspective(input, warpedImage, perspectiveMatrix, outputSize, cv::INTER_LINEAR);
+    
+    return warpedImage;
 }
 
 cv::Mat ImageProcessor::projectToBirdEye(const cv::Mat& input, const std::string& cameraName, float groundPlaneHeight) {
@@ -1049,4 +1050,943 @@ cv::Mat ImageProcessor::createSurroundViewParallel(const cv::Mat& front, const c
     
     std::cout << "Parallel surround view created - Size: " << surroundView.cols << "x" << surroundView.rows << std::endl;
     return surroundView;
+}
+
+// Enhanced surround view with advanced warping and seamless stitching
+cv::Mat ImageProcessor::createSurroundViewWithWarping(const cv::Mat& front, const cv::Mat& left, const cv::Mat& right, const cv::Mat& back) {
+    if (front.empty() || left.empty() || right.empty() || back.empty()) {
+        std::cerr << "One or more camera images are empty!" << std::endl;
+        return cv::Mat();
+    }
+    
+    std::cout << "Creating enhanced surround view with advanced warping..." << std::endl;
+    
+    // Step 1: Apply ground plane projection to each camera view
+    cv::Mat projectedFront = projectToGroundPlane(front, "front");
+    cv::Mat projectedLeft = projectToGroundPlane(left, "left");
+    cv::Mat projectedRight = projectToGroundPlane(right, "right");
+    cv::Mat projectedBack = projectToGroundPlane(back, "back");
+    
+    // Step 2: Apply rotations as needed (left and right cameras)
+    cv::Mat rotatedLeft = rotateImage90CounterClockwise(projectedLeft);
+    cv::Mat rotatedRight = rotateImage90Clockwise(projectedRight);
+    cv::Mat rotatedBack = rotateImage180(projectedBack);
+    
+    // Step 3: Create stitching masks for seamless blending
+    cv::Mat frontMask = createStitchingMask(projectedFront, "front");
+    cv::Mat leftMask = createStitchingMask(rotatedLeft, "left");
+    cv::Mat rightMask = createStitchingMask(rotatedRight, "right");
+    cv::Mat backMask = createStitchingMask(rotatedBack, "back");
+    
+    // Step 4: Standardize dimensions for seamless stitching
+    cv::Size standardSize(800, 600); // Common size for all camera views
+    cv::resize(projectedFront, projectedFront, standardSize);
+    cv::resize(rotatedLeft, rotatedLeft, standardSize);
+    cv::resize(rotatedRight, rotatedRight, standardSize);
+    cv::resize(rotatedBack, rotatedBack, standardSize);
+    cv::resize(frontMask, frontMask, standardSize);
+    cv::resize(leftMask, leftMask, standardSize);
+    cv::resize(rightMask, rightMask, standardSize);
+    cv::resize(backMask, backMask, standardSize);
+    
+    // Step 5: Create the enhanced surround view layout
+    int viewWidth = standardSize.width;
+    int viewHeight = standardSize.height;
+    int surroundWidth = viewWidth * 3;   // 3 columns: left, center, right
+    int surroundHeight = viewHeight * 3; // 3 rows: top, middle, bottom
+    
+    cv::Mat enhancedSurroundView = cv::Mat::zeros(surroundHeight, surroundWidth, CV_8UC3);
+    
+    // Define regions for seamless layout
+    cv::Rect frontRegion(viewWidth, 0, viewWidth, viewHeight);                          // Top center
+    cv::Rect leftRegion(0, viewHeight, viewWidth, viewHeight);                         // Middle left
+    cv::Rect rightRegion(viewWidth * 2, viewHeight, viewWidth, viewHeight);            // Middle right
+    cv::Rect backRegion(viewWidth, viewHeight * 2, viewWidth, viewHeight);             // Bottom center
+    cv::Rect carRegion(viewWidth, viewHeight, viewWidth, viewHeight);                  // Center (car area)
+    
+    // Step 6: Copy warped images to their regions
+    try {
+        projectedFront.copyTo(enhancedSurroundView(frontRegion));
+        rotatedLeft.copyTo(enhancedSurroundView(leftRegion));
+        rotatedRight.copyTo(enhancedSurroundView(rightRegion));
+        rotatedBack.copyTo(enhancedSurroundView(backRegion));
+        
+        // Step 7: Create seamless transitions at corner regions using blending
+        
+        // Front-Left corner blending
+        cv::Rect frontLeftCorner(0, 0, viewWidth, viewHeight);
+        cv::Mat frontLeftBlend = blendImages(
+            projectedFront, rotatedLeft, frontMask, leftMask
+        );
+        cv::resize(frontLeftBlend, frontLeftBlend, cv::Size(viewWidth, viewHeight));
+        frontLeftBlend.copyTo(enhancedSurroundView(frontLeftCorner));
+        
+        // Front-Right corner blending
+        cv::Rect frontRightCorner(viewWidth * 2, 0, viewWidth, viewHeight);
+        cv::Mat frontRightBlend = blendImages(
+            projectedFront, rotatedRight, frontMask, rightMask
+        );
+        cv::resize(frontRightBlend, frontRightBlend, cv::Size(viewWidth, viewHeight));
+        frontRightBlend.copyTo(enhancedSurroundView(frontRightCorner));
+        
+        // Back-Left corner blending
+        cv::Rect backLeftCorner(0, viewHeight * 2, viewWidth, viewHeight);
+        cv::Mat backLeftBlend = blendImages(
+            rotatedBack, rotatedLeft, backMask, leftMask
+        );
+        cv::resize(backLeftBlend, backLeftBlend, cv::Size(viewWidth, viewHeight));
+        backLeftBlend.copyTo(enhancedSurroundView(backLeftCorner));
+        
+        // Back-Right corner blending
+        cv::Rect backRightCorner(viewWidth * 2, viewHeight * 2, viewWidth, viewHeight);
+        cv::Mat backRightBlend = blendImages(
+            rotatedBack, rotatedRight, backMask, rightMask
+        );
+        cv::resize(backRightBlend, backRightBlend, cv::Size(viewWidth, viewHeight));
+        backRightBlend.copyTo(enhancedSurroundView(backRightCorner));
+        
+        // Step 8: Add car representation in center
+        cv::Scalar carAreaColor(40, 40, 40); // Dark background
+        cv::rectangle(enhancedSurroundView, carRegion, carAreaColor, -1);
+        
+        // Add car outline
+        cv::Point carCenter(carRegion.x + carRegion.width/2, carRegion.y + carRegion.height/2);
+        cv::Size carSize(carRegion.width/4, carRegion.height/6);
+        cv::Rect carIndicator(carCenter.x - carSize.width/2, carCenter.y - carSize.height/2, 
+                             carSize.width, carSize.height);
+        cv::Scalar carColor(180, 180, 180);
+        cv::rectangle(enhancedSurroundView, carIndicator, carColor, -1);
+        
+        // Add direction indicator
+        cv::Point arrowStart(carCenter.x, carCenter.y - carSize.height/4);
+        cv::Point arrowEnd(carCenter.x, carCenter.y - carSize.height/2 - 15);
+        cv::arrowedLine(enhancedSurroundView, arrowStart, arrowEnd, cv::Scalar(255, 255, 255), 2);
+        
+        std::cout << "Enhanced surround view created - Size: " << surroundWidth << "x" << surroundHeight << std::endl;
+        std::cout << "Using advanced warping with ground plane projection and seamless stitching" << std::endl;
+        
+        return enhancedSurroundView;
+        
+    } catch (const cv::Exception& e) {
+        std::cerr << "Error creating enhanced surround view: " << e.what() << std::endl;
+        return cv::Mat();
+    }
+}
+
+cv::Mat ImageProcessor::createEnhancedSurroundView(const cv::Mat& front, const cv::Mat& left, const cv::Mat& right, const cv::Mat& back) {
+    // This method provides a simpler interface for enhanced surround view
+    return createSurroundViewWithWarping(front, left, right, back);
+}
+
+cv::Mat ImageProcessor::createStitchingMask(const cv::Mat& image, const std::string& cameraView) {
+    if (image.empty()) {
+        return cv::Mat();
+    }
+    
+    cv::Mat mask = cv::Mat::zeros(image.size(), CV_8UC1);
+    
+    // Create feathered masks for each camera view to enable smooth blending
+    int width = image.cols;
+    int height = image.rows;
+    int featherWidth = std::min(width, height) / 10; // 10% feather zone
+    
+    if (cameraView == "front") {
+        // Front camera: full weight in center, fade at bottom
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                float weight = 1.0f;
+                
+                // Fade at bottom edge
+                if (y > height - featherWidth) {
+                    weight = (float)(height - y) / featherWidth;
+                }
+                
+                // Fade at left and right edges
+                if (x < featherWidth) {
+                    weight = std::min(weight, (float)x / featherWidth);
+                }
+                if (x > width - featherWidth) {
+                    weight = std::min(weight, (float)(width - x) / featherWidth);
+                }
+                
+                mask.at<uchar>(y, x) = (uchar)(weight * 255);
+            }
+        }
+    }
+    else if (cameraView == "back") {
+        // Back camera: full weight in center, fade at top
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                float weight = 1.0f;
+                
+                // Fade at top edge
+                if (y < featherWidth) {
+                    weight = (float)y / featherWidth;
+                }
+                
+                // Fade at left and right edges
+                if (x < featherWidth) {
+                    weight = std::min(weight, (float)x / featherWidth);
+                }
+                if (x > width - featherWidth) {
+                    weight = std::min(weight, (float)(width - x) / featherWidth);
+                }
+                
+                mask.at<uchar>(y, x) = (uchar)(weight * 255);
+            }
+        }
+    }
+    else if (cameraView == "left") {
+        // Left camera: full weight in center, fade at right
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                float weight = 1.0f;
+                
+                // Fade at right edge
+                if (x > width - featherWidth) {
+                    weight = (float)(width - x) / featherWidth;
+                }
+                
+                // Fade at top and bottom edges
+                if (y < featherWidth) {
+                    weight = std::min(weight, (float)y / featherWidth);
+                }
+                if (y > height - featherWidth) {
+                    weight = std::min(weight, (float)(height - y) / featherWidth);
+                }
+                
+                mask.at<uchar>(y, x) = (uchar)(weight * 255);
+            }
+        }
+    }
+    else if (cameraView == "right") {
+        // Right camera: full weight in center, fade at left
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                float weight = 1.0f;
+                
+                // Fade at left edge
+                if (x < featherWidth) {
+                    weight = (float)x / featherWidth;
+                }
+                
+                // Fade at top and bottom edges
+                if (y < featherWidth) {
+                    weight = std::min(weight, (float)y / featherWidth);
+                }
+                if (y > height - featherWidth) {
+                    weight = std::min(weight, (float)(height - y) / featherWidth);
+                }
+                
+                mask.at<uchar>(y, x) = (uchar)(weight * 255);
+            }
+        }
+    }
+    else {
+        // Default: uniform mask
+        mask.setTo(255);
+    }
+    
+    return mask;
+}
+
+cv::Mat ImageProcessor::blendImages(const cv::Mat& img1, const cv::Mat& img2, const cv::Mat& mask1, const cv::Mat& mask2) {
+    if (img1.empty() || img2.empty() || mask1.empty() || mask2.empty()) {
+        return cv::Mat();
+    }
+    
+    // Ensure all images have the same size
+    cv::Size blendSize = img1.size();
+    cv::Mat resizedImg2, resizedMask1, resizedMask2;
+    
+    cv::resize(img2, resizedImg2, blendSize);
+    cv::resize(mask1, resizedMask1, blendSize);
+    cv::resize(mask2, resizedMask2, blendSize);
+    
+    // Convert masks to 3-channel for blending
+    cv::Mat mask1_3ch, mask2_3ch;
+    cv::cvtColor(resizedMask1, mask1_3ch, cv::COLOR_GRAY2BGR);
+    cv::cvtColor(resizedMask2, mask2_3ch, cv::COLOR_GRAY2BGR);
+    
+    // Normalize masks
+    mask1_3ch.convertTo(mask1_3ch, CV_32F, 1.0/255.0);
+    mask2_3ch.convertTo(mask2_3ch, CV_32F, 1.0/255.0);
+    
+    // Convert images to float
+    cv::Mat img1_f, img2_f;
+    img1.convertTo(img1_f, CV_32F);
+    resizedImg2.convertTo(img2_f, CV_32F);
+    
+    // Weighted blending
+    cv::Mat totalWeight = mask1_3ch + mask2_3ch;
+    cv::Mat blended = cv::Mat::zeros(blendSize, CV_32FC3);
+    
+    for (int y = 0; y < blendSize.height; y++) {
+        for (int x = 0; x < blendSize.width; x++) {
+            cv::Vec3f weight1 = mask1_3ch.at<cv::Vec3f>(y, x);
+            cv::Vec3f weight2 = mask2_3ch.at<cv::Vec3f>(y, x);
+            cv::Vec3f totalW = totalWeight.at<cv::Vec3f>(y, x);
+            
+            if (totalW[0] > 0 || totalW[1] > 0 || totalW[2] > 0) {
+                cv::Vec3f pixel1 = img1_f.at<cv::Vec3f>(y, x);
+                cv::Vec3f pixel2 = img2_f.at<cv::Vec3f>(y, x);
+                
+                cv::Vec3f blendedPixel = (pixel1.mul(weight1) + pixel2.mul(weight2));
+                blendedPixel[0] /= std::max(totalW[0], 0.001f);
+                blendedPixel[1] /= std::max(totalW[1], 0.001f);
+                blendedPixel[2] /= std::max(totalW[2], 0.001f);
+                
+                blended.at<cv::Vec3f>(y, x) = blendedPixel;
+            }
+        }
+    }
+    
+    // Convert back to 8-bit
+    cv::Mat result;
+    blended.convertTo(result, CV_8U);
+    
+    return result;
+}
+
+cv::Mat ImageProcessor::projectToGroundPlane(const cv::Mat& image, const std::string& cameraView, float groundHeight) {
+    if (image.empty()) {
+        return cv::Mat();
+    }
+    
+    // Use existing homography calculation but with ground plane projection
+    cv::Mat homography = calculateGroundHomography(cameraView, image.size(), groundHeight);
+    
+    if (homography.empty()) {
+        // If homography calculation fails, return the undistorted image
+        std::cout << "Ground plane projection failed for " << cameraView << ", using undistorted image" << std::endl;
+        return undistortWithYAMLParams(image, cameraView);
+    }
+    
+    // Apply the ground plane transformation
+    cv::Mat projectedImage;
+    cv::warpPerspective(image, projectedImage, homography, image.size(), cv::INTER_LINEAR);
+    
+    return projectedImage;
+}
+
+cv::Mat ImageProcessor::calculateGroundHomography(const std::string& cameraView, const cv::Size& imageSize, float groundHeight) {
+    // Create a simplified ground plane homography based on camera view
+    // This is a simplified version - in practice, you'd use full camera calibration
+    
+    cv::Mat homography = cv::Mat::eye(3, 3, CV_32F);
+    
+    if (cameraView == "front") {
+        // Front camera looking forward - slight perspective correction
+        homography.at<float>(0, 0) = 1.0f;
+        homography.at<float>(1, 1) = 0.8f;  // Compress vertically
+        homography.at<float>(2, 1) = -0.001f; // Perspective effect
+    }
+    else if (cameraView == "back") {
+        // Back camera looking backward - similar to front
+        homography.at<float>(0, 0) = 1.0f;
+        homography.at<float>(1, 1) = 0.8f;
+        homography.at<float>(2, 1) = 0.001f; // Reverse perspective
+    }
+    else if (cameraView == "left") {
+        // Left camera - side view projection
+        homography.at<float>(0, 0) = 0.8f;   // Compress horizontally
+        homography.at<float>(1, 1) = 1.0f;
+        homography.at<float>(2, 0) = -0.001f; // Side perspective
+    }
+    else if (cameraView == "right") {
+        // Right camera - side view projection
+        homography.at<float>(0, 0) = 0.8f;
+        homography.at<float>(1, 1) = 1.0f;
+        homography.at<float>(2, 0) = 0.001f;  // Reverse side perspective
+    }
+    
+    return homography;
+}
+
+// Truly seamless surround view without rigid grid structure
+cv::Mat ImageProcessor::createSeamlessSurroundView(const cv::Mat& front, const cv::Mat& left, const cv::Mat& right, const cv::Mat& back) {
+    if (front.empty() || left.empty() || right.empty() || back.empty()) {
+        std::cerr << "One or more camera images are empty!" << std::endl;
+        return cv::Mat();
+    }
+    
+    std::cout << "Creating seamless surround view without grid constraints..." << std::endl;
+    
+    // Step 1: Create a larger canvas for seamless composition
+    int canvasWidth = 2000;   // Much wider canvas for proper surround view
+    int canvasHeight = 1600;  // Much taller canvas for better coverage
+    cv::Mat seamlessView = cv::Mat::zeros(canvasHeight, canvasWidth, CV_8UC3);
+    
+    // Step 2: Apply advanced undistortion and prepare images
+    cv::Mat processedFront = undistortWithYAMLParams(front, "front");
+    cv::Mat processedLeft = undistortWithYAMLParams(left, "left");
+    cv::Mat processedRight = undistortWithYAMLParams(right, "right");
+    cv::Mat processedBack = undistortWithYAMLParams(back, "back");
+    
+    // Apply rotations - UPDATED to match cylindrical view
+    cv::Mat rotatedLeft = rotateImage90CounterClockwise(processedLeft);  // Left: 90° counter-clockwise
+    cv::Mat rotatedRight = rotateImage90Clockwise(processedRight);       // Right: 90° clockwise
+    cv::Mat rotatedBack = rotateImage180(processedBack);                 // Back: 180° rotation
+    cv::Mat rotatedFront = rotateImage180(processedFront);               // Front: 180° rotation
+    
+    // Step 3: Define extended regions for proper surround view
+    int centerX = canvasWidth / 2;
+    int centerY = canvasHeight / 2;
+    int regionWidth = 700;   // Slightly smaller for better positioning
+    int regionHeight = 550;  // Slightly smaller for better positioning
+    int overlapSize = 250;   // Even larger overlap to eliminate gaps
+    
+    // Step 4: Create continuous blending masks with centered positioning
+    cv::Mat frontMask = cv::Mat::zeros(canvasHeight, canvasWidth, CV_32F);
+    cv::Mat leftMask = cv::Mat::zeros(canvasHeight, canvasWidth, CV_32F);
+    cv::Mat rightMask = cv::Mat::zeros(canvasHeight, canvasWidth, CV_32F);
+    cv::Mat backMask = cv::Mat::zeros(canvasHeight, canvasWidth, CV_32F);
+    
+    // Create radial masks centered around the car with equal spacing
+    float radius = 350.0f;  // Distance from center for each camera view
+    cv::Point2f frontCenter(centerX, centerY - radius);     // North
+    cv::Point2f backCenter(centerX, centerY + radius);      // South  
+    cv::Point2f leftCenter(centerX - radius, centerY);      // West
+    cv::Point2f rightCenter(centerX + radius, centerY);     // East
+    
+    float maxRadius = 700.0f;  // Much larger influence radius to ensure overlap
+    float minRadius = 80.0f;   // Smaller minimum radius for wider coverage
+    
+    // Generate smooth radial falloff masks with enhanced corner blending
+    for (int y = 0; y < canvasHeight; y++) {
+        for (int x = 0; x < canvasWidth; x++) {
+            cv::Point2f current(x, y);
+            
+            // Calculate distances to each camera center
+            float distToFront = cv::norm(current - frontCenter);
+            float distToBack = cv::norm(current - backCenter);
+            float distToLeft = cv::norm(current - leftCenter);
+            float distToRight = cv::norm(current - rightCenter);
+            
+            // Calculate smooth falloff weights with extended coverage
+            float frontWeight = std::max(0.0f, (maxRadius - distToFront) / (maxRadius - minRadius));
+            float backWeight = std::max(0.0f, (maxRadius - distToBack) / (maxRadius - minRadius));
+            float leftWeight = std::max(0.0f, (maxRadius - distToLeft) / (maxRadius - minRadius));
+            float rightWeight = std::max(0.0f, (maxRadius - distToRight) / (maxRadius - minRadius));
+            
+            // Apply smooth cubic interpolation for better blending
+            frontWeight = frontWeight * frontWeight * (3.0f - 2.0f * frontWeight);
+            backWeight = backWeight * backWeight * (3.0f - 2.0f * backWeight);
+            leftWeight = leftWeight * leftWeight * (3.0f - 2.0f * leftWeight);
+            rightWeight = rightWeight * rightWeight * (3.0f - 2.0f * rightWeight);
+            
+            // Enhanced corner boost for complete gap elimination
+            float centerX_f = static_cast<float>(centerX);
+            float centerY_f = static_cast<float>(centerY);
+            float distFromCenter = cv::norm(current - cv::Point2f(centerX_f, centerY_f));
+            float cornerBoost = std::min(2.0f, 1.0f + (distFromCenter / 600.0f));  // Stronger corner boost
+            
+            // Apply smooth transitions with corner boost
+            frontMask.at<float>(y, x) = std::min(1.0f, frontWeight * cornerBoost);
+            backMask.at<float>(y, x) = std::min(1.0f, backWeight * cornerBoost);
+            leftMask.at<float>(y, x) = std::min(1.0f, leftWeight * cornerBoost);
+            rightMask.at<float>(y, x) = std::min(1.0f, rightWeight * cornerBoost);
+        }
+    }
+    
+    // Step 5: Apply perspective warping to create proper bird's-eye view stretching
+    cv::Size warpSize(regionWidth + overlapSize, regionHeight + overlapSize);
+    cv::Mat warpedFront = applyPerspectiveWarpingForSurroundView(rotatedFront, "front", warpSize);
+    cv::Mat warpedLeft = applyPerspectiveWarpingForSurroundView(rotatedLeft, "left", warpSize);
+    cv::Mat warpedRight = applyPerspectiveWarpingForSurroundView(rotatedRight, "right", warpSize);
+    cv::Mat warpedBack = applyPerspectiveWarpingForSurroundView(rotatedBack, "back", warpSize);
+    
+    // Fallback to resizing if warping fails
+    if (warpedFront.empty()) cv::resize(rotatedFront, warpedFront, warpSize);
+    if (warpedLeft.empty()) cv::resize(rotatedLeft, warpedLeft, warpSize);
+    if (warpedRight.empty()) cv::resize(rotatedRight, warpedRight, warpSize);
+    if (warpedBack.empty()) cv::resize(rotatedBack, warpedBack, warpSize);
+    
+    // Step 6: Seamless composition using weighted blending with warped images
+    cv::Mat frontContrib = cv::Mat::zeros(canvasHeight, canvasWidth, CV_32FC3);
+    cv::Mat leftContrib = cv::Mat::zeros(canvasHeight, canvasWidth, CV_32FC3);
+    cv::Mat rightContrib = cv::Mat::zeros(canvasHeight, canvasWidth, CV_32FC3);
+    cv::Mat backContrib = cv::Mat::zeros(canvasHeight, canvasWidth, CV_32FC3);
+    cv::Mat totalWeights = cv::Mat::zeros(canvasHeight, canvasWidth, CV_32F);
+    
+    // Place and blend each camera's warped contribution with better centering
+    placeImageWithMask(warpedFront, frontMask, frontContrib, totalWeights, 
+                       frontCenter.x - (regionWidth + overlapSize)/2, frontCenter.y - (regionHeight + overlapSize)/2);
+    placeImageWithMask(warpedLeft, leftMask, leftContrib, totalWeights,
+                       leftCenter.x - (regionWidth + overlapSize)/2, leftCenter.y - (regionHeight + overlapSize)/2);
+    placeImageWithMask(warpedRight, rightMask, rightContrib, totalWeights,
+                       rightCenter.x - (regionWidth + overlapSize)/2, rightCenter.y - (regionHeight + overlapSize)/2);
+    placeImageWithMask(warpedBack, backMask, backContrib, totalWeights,
+                       backCenter.x - (regionWidth + overlapSize)/2, backCenter.y - (regionHeight + overlapSize)/2);
+    
+    // Step 7: Final blend with normalized weights and gap filling
+    cv::Mat result = cv::Mat::zeros(canvasHeight, canvasWidth, CV_32FC3);
+    result = frontContrib + leftContrib + rightContrib + backContrib;
+    
+    // Normalize by total weights and fill gaps with enhanced interpolation
+    for (int y = 0; y < canvasHeight; y++) {
+        for (int x = 0; x < canvasWidth; x++) {
+            float totalWeight = totalWeights.at<float>(y, x);
+            if (totalWeight > 0.001f) {
+                cv::Vec3f pixel = result.at<cv::Vec3f>(y, x);
+                result.at<cv::Vec3f>(y, x) = pixel / totalWeight;
+            } else {
+                // Enhanced gap filling with neighboring pixel interpolation
+                cv::Vec3f fillColor(0.05f, 0.05f, 0.05f);  // Dark fill
+                
+                // Try to interpolate from nearby pixels
+                int searchRadius = 15;
+                cv::Vec3f avgColor(0, 0, 0);
+                int validCount = 0;
+                
+                for (int dy = -searchRadius; dy <= searchRadius && validCount == 0; dy++) {
+                    for (int dx = -searchRadius; dx <= searchRadius && validCount == 0; dx++) {
+                        int ny = y + dy, nx = x + dx;
+                        if (ny >= 0 && ny < canvasHeight && nx >= 0 && nx < canvasWidth) {
+                            if (totalWeights.at<float>(ny, nx) > 0.001f) {
+                                avgColor = result.at<cv::Vec3f>(ny, nx);
+                                validCount++;
+                            }
+                        }
+                    }
+                }
+                
+                result.at<cv::Vec3f>(y, x) = validCount > 0 ? avgColor : fillColor;
+            }
+        }
+    }
+    
+    // Step 8: Add car representation in center without rigid boundaries
+    cv::Point carCenter(centerX, centerY);
+    int carWidth = 60, carHeight = 120;
+    cv::Rect carRect(carCenter.x - carWidth/2, carCenter.y - carHeight/2, carWidth, carHeight);
+    
+    // Create car with soft edges
+    cv::ellipse(result, carCenter, cv::Size(carWidth/2, carHeight/2), 0, 0, 360, 
+                cv::Scalar(0.7, 0.7, 0.7), -1);
+    
+    // Add direction arrow
+    cv::Point arrowStart(carCenter.x, carCenter.y - carHeight/3);
+    cv::Point arrowEnd(carCenter.x, carCenter.y - carHeight/2 - 15);
+    cv::arrowedLine(result, arrowStart, arrowEnd, cv::Scalar(1.0, 1.0, 1.0), 2);
+    
+    // Convert back to 8-bit
+    cv::Mat finalResult;
+    result.convertTo(finalResult, CV_8U, 255.0);
+    
+    std::cout << "Seamless surround view created - Size: " << canvasWidth << "x" << canvasHeight << std::endl;
+    std::cout << "Using continuous radial blending with perspective warping for proper stretching" << std::endl;
+    
+    return finalResult;
+}
+
+// Computer vision-based cylindrical surround view with dynamic warping
+cv::Mat ImageProcessor::createCylindricalSurroundView(const cv::Mat& front, const cv::Mat& left, const cv::Mat& right, const cv::Mat& back) {
+    std::cout << "Creating cylindrical surround view with computer vision techniques..." << std::endl;
+    
+    // Validate input images
+    if (front.empty() || left.empty() || right.empty() || back.empty()) {
+        std::cout << "Error: One or more input images are empty" << std::endl;
+        return cv::Mat();
+    }
+    
+    try {
+        // Step 1: Undistort and prepare images
+        cv::Mat processedFront = undistortWithYAMLParams(front, "front");
+        cv::Mat processedLeft = undistortWithYAMLParams(left, "left");
+        cv::Mat processedRight = undistortWithYAMLParams(right, "right");
+        cv::Mat processedBack = undistortWithYAMLParams(back, "back");
+        
+        // Validate undistorted images
+        if (processedFront.empty() || processedLeft.empty() || processedRight.empty() || processedBack.empty()) {
+            std::cout << "Warning: Undistortion failed, using original images" << std::endl;
+            processedFront = front.clone();
+            processedLeft = left.clone();
+            processedRight = right.clone();
+            processedBack = back.clone();
+        }
+        
+        // Apply rotations to match real-world camera orientation - UPDATED WITH 180° FOR LEFT/RIGHT
+        cv::Mat rotatedLeft = rotateImage180(processedLeft);                 // Left: 180° rotation
+        cv::Mat rotatedRight = rotateImage180(processedRight);               // Right: 180° rotation  
+        cv::Mat rotatedBack = rotateImage180(processedBack);                 // Back: 180° rotation
+        cv::Mat rotatedFront = rotateImage180(processedFront);               // Front: 180° rotation
+        
+        // Step 2: Project all images to cylindrical coordinates
+        std::cout << "Projecting images to cylindrical coordinates..." << std::endl;
+        float focalLength = 650.0f; // Estimated from camera matrix
+        
+        std::cout << "Projecting front image..." << std::endl;
+        cv::Mat cylFront = projectToCylindrical(rotatedFront, "front", focalLength);
+        if (cylFront.empty()) {
+            std::cout << "Error: Front cylindrical projection failed" << std::endl;
+            return cv::Mat();
+        }
+        
+        std::cout << "Projecting left image..." << std::endl;
+        cv::Mat cylLeft = projectToCylindrical(rotatedLeft, "left", focalLength);
+        if (cylLeft.empty()) {
+            std::cout << "Error: Left cylindrical projection failed" << std::endl;
+            return cv::Mat();
+        }
+        
+        std::cout << "Projecting right image..." << std::endl;
+        cv::Mat cylRight = projectToCylindrical(rotatedRight, "right", focalLength);
+        if (cylRight.empty()) {
+            std::cout << "Error: Right cylindrical projection failed" << std::endl;
+            return cv::Mat();
+        }
+        
+        std::cout << "Projecting back image..." << std::endl;
+        cv::Mat cylBack = projectToCylindrical(rotatedBack, "back", focalLength);
+        if (cylBack.empty()) {
+            std::cout << "Error: Back cylindrical projection failed" << std::endl;
+            return cv::Mat();
+        }
+        
+        std::cout << "All cylindrical projections completed successfully" << std::endl;
+        
+        // Step 3: Create panoramic cylindrical canvas - INCREASED SCALE
+        std::cout << "Creating cylindrical panoramic canvas..." << std::endl;
+        int canvasWidth = 1600;   // Wide panoramic canvas for full 360-degree view
+        int canvasHeight = 800;   // Height for bird's-eye view
+        cv::Mat canvas = cv::Mat::zeros(canvasHeight, canvasWidth, CV_8UC3);
+        
+        // Step 4: Create seamless cylindrical panorama with proper warping - INCREASED SCALE
+        std::cout << "Creating seamless cylindrical panorama with proper warping..." << std::endl;
+        cv::Point2f canvasCenter(canvasWidth / 2.0f, canvasHeight / 2.0f);
+        
+        // Define camera placements with angular sectors
+        struct CameraPlacement {
+            cv::Mat image;
+            float startAngle;    // Start angle in degrees 
+            float endAngle;      // End angle in degrees
+            float radius;        // Distance from center for cylindrical projection
+            std::string name;
+        };
+        
+        // Create overlapping angular sectors for seamless blending - FIXED: Correct left/right placement
+        float sectorSize = 100.0f;  // Each camera covers 100 degrees with overlap
+        std::vector<CameraPlacement> cameras = {
+            {cylFront, 225.0f, 315.0f, 350.0f, "front"},  // Front: 225° to 315° (centered at 270°/top) - increased radius
+            {cylLeft, 315.0f, 45.0f, 350.0f, "left"},     // Left: 315° to 45° (centered at 0°/right side) - FIXED: use cylLeft
+            {cylBack, 45.0f, 135.0f, 350.0f, "back"},     // Back: 45° to 135° (centered at 90°/bottom) - increased radius
+            {cylRight, 135.0f, 225.0f, 350.0f, "right"}   // Right: 135° to 225° (centered at 180°/left side) - FIXED: use cylRight
+        };
+        
+        // Debug: Print camera sector information
+        for (const auto& cam : cameras) {
+            std::cout << "Camera " << cam.name << ": " << cam.startAngle << "° to " << cam.endAngle << "°" << std::endl;
+        }
+        
+        // Create panoramic view by sampling from each camera based on angle
+        for (int y = 0; y < canvasHeight; y++) {
+            for (int x = 0; x < canvasWidth; x++) {
+                // Calculate polar coordinates from canvas center
+                float dx = x - canvasCenter.x;
+                float dy = y - canvasCenter.y;
+                float distance = std::sqrt(dx*dx + dy*dy);
+                float angle = std::atan2(dy, dx) * 180.0f / CV_PI;
+                if (angle < 0) angle += 360.0f;  // Normalize to 0-360
+                
+                // Only process pixels within the panoramic radius - INCREASED SCALE
+                if (distance < 400.0f && distance > 80.0f) {
+                    cv::Vec3f totalColor(0, 0, 0);
+                    float totalWeight = 0.0f;
+                    
+                    // Check contribution from each camera
+                    for (const auto& cam : cameras) {
+                        if (cam.image.empty()) continue;
+                        
+                        // Check if this angle falls within camera's sector
+                        bool inSector = false;
+                        if (cam.startAngle <= cam.endAngle) {
+                            // Normal case: sector doesn't wrap around 0°
+                            inSector = (angle >= cam.startAngle && angle <= cam.endAngle);
+                        } else {
+                            // Wrap-around case (e.g., 315° to 45°)
+                            inSector = (angle >= cam.startAngle || angle <= cam.endAngle);
+                        }
+                        
+                        if (inSector) {
+                            // Calculate sector center handling wrap-around
+                            float sectorCenter;
+                            if (cam.startAngle <= cam.endAngle) {
+                                sectorCenter = (cam.startAngle + cam.endAngle) / 2.0f;
+                            } else {
+                                // Wrap-around case
+                                float avgAngle = (cam.startAngle + cam.endAngle + 360.0f) / 2.0f;
+                                sectorCenter = fmod(avgAngle, 360.0f);
+                            }
+                            
+                            // Calculate angle offset from sector center
+                            float angleOffset = angle - sectorCenter;
+                            
+                            // Handle wrap-around for angle offset calculation
+                            if (angleOffset > 180.0f) angleOffset -= 360.0f;
+                            if (angleOffset < -180.0f) angleOffset += 360.0f;
+                            
+                            // Map to image coordinates with camera-specific improved mapping
+                            float normalizedOffset = angleOffset / (sectorSize / 2.0f);  // Normalize to [-1, 1]
+                            
+                            // Camera-specific horizontal mapping for better coverage
+                            float imgX;
+                            if (cam.name == "left" || cam.name == "right") {
+                                // For side cameras, use more of the image width for better side coverage
+                                imgX = cam.image.cols * (0.5f + 0.45f * normalizedOffset);
+                            } else {
+                                // For front/back cameras, standard mapping
+                                imgX = cam.image.cols * (0.5f + 0.4f * normalizedOffset);
+                            }
+                            
+                            float radialFactor = (distance - 80.0f) / 320.0f;  // Normalize distance - INCREASED SCALE
+                            radialFactor = std::max(0.0f, std::min(1.0f, radialFactor));
+                            
+                            // Camera-specific vertical mapping for better perspective
+                            float imgY;
+                            if (cam.name == "left" || cam.name == "right") {
+                                // For side cameras, use more vertical range for better side view
+                                imgY = cam.image.rows * (0.15f + 0.7f * radialFactor);
+                            } else {
+                                // For front/back cameras, standard vertical mapping
+                                imgY = cam.image.rows * (0.2f + 0.6f * radialFactor);
+                            }
+                            
+                            // Bilinear interpolation
+                            if (imgX >= 0 && imgX < cam.image.cols - 1 && imgY >= 0 && imgY < cam.image.rows - 1) {
+                                int x0 = static_cast<int>(imgX);
+                                int y0 = static_cast<int>(imgY);
+                                int x1 = x0 + 1;
+                                int y1 = y0 + 1;
+                                
+                                float fx = imgX - x0;
+                                float fy = imgY - y0;
+                                
+                                cv::Vec3b p00 = cam.image.at<cv::Vec3b>(y0, x0);
+                                cv::Vec3b p01 = cam.image.at<cv::Vec3b>(y0, x1);
+                                cv::Vec3b p10 = cam.image.at<cv::Vec3b>(y1, x0);
+                                cv::Vec3b p11 = cam.image.at<cv::Vec3b>(y1, x1);
+                                
+                                cv::Vec3f interpolated = 
+                                    cv::Vec3f(p00) * (1-fx) * (1-fy) +
+                                    cv::Vec3f(p01) * fx * (1-fy) +
+                                    cv::Vec3f(p10) * (1-fx) * fy +
+                                    cv::Vec3f(p11) * fx * fy;
+                                
+                                // Calculate blend weight based on distance from sector center
+                                float blendWidth = 20.0f;  // Degrees of blending zone
+                                float distToCenter = std::abs(angleOffset);
+                                float weight = 1.0f;
+                                
+                                // Calculate sector half-width
+                                float sectorHalfWidth = sectorSize / 2.0f;
+                                
+                                if (distToCenter > sectorHalfWidth - blendWidth) {
+                                    float blendFactor = (sectorHalfWidth - distToCenter) / blendWidth;
+                                    weight = std::max(0.0f, std::min(1.0f, blendFactor));
+                                    weight = weight * weight * (3.0f - 2.0f * weight); // Smooth step function
+                                }
+                                
+                                // Additional radial falloff for smooth edge blending - INCREASED SCALE
+                                float radialWeight = 1.0f;
+                                if (distance > 380.0f) {
+                                    radialWeight = (400.0f - distance) / 20.0f;
+                                    radialWeight = std::max(0.0f, std::min(1.0f, radialWeight));
+                                } else if (distance < 100.0f) {
+                                    radialWeight = (distance - 80.0f) / 20.0f;
+                                    radialWeight = std::max(0.0f, std::min(1.0f, radialWeight));
+                                }
+                                
+                                weight *= radialWeight;
+                                
+                                if (weight > 0.01f) {
+                                    totalColor += interpolated * weight;
+                                    totalWeight += weight;
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Set final pixel value
+                    if (totalWeight > 0.01f) {
+                        cv::Vec3b finalColor;
+                        cv::Vec3f normalizedColor = totalColor / totalWeight;
+                        finalColor[0] = cv::saturate_cast<uchar>(normalizedColor[0]);
+                        finalColor[1] = cv::saturate_cast<uchar>(normalizedColor[1]);
+                        finalColor[2] = cv::saturate_cast<uchar>(normalizedColor[2]);
+                        canvas.at<cv::Vec3b>(y, x) = finalColor;
+                    }
+                }
+            }
+        }
+        // Add car representation at center
+        cv::Point carCenter(canvas.cols/2, canvas.rows/2);
+        int carWidth = 80, carHeight = 120;
+        cv::Rect carRect(carCenter.x - carWidth/2, carCenter.y - carHeight/2, carWidth, carHeight);
+        
+        if (carRect.x >= 0 && carRect.y >= 0 && 
+            carRect.x + carRect.width < canvas.cols && 
+            carRect.y + carRect.height < canvas.rows) {
+            cv::rectangle(canvas, carRect, cv::Scalar(255, 255, 255), -1);
+            cv::rectangle(canvas, carRect, cv::Scalar(0, 0, 0), 3);
+        }
+        
+        std::cout << "Seamless cylindrical surround view created - Size: " << canvas.cols << "x" << canvas.rows << std::endl;
+        std::cout << "Using advanced warping and angular blending for seamless transitions" << std::endl;
+        
+        return canvas;
+        
+    } catch (const std::exception& e) {
+        std::cout << "Exception in cylindrical surround view creation: " << e.what() << std::endl;
+        return cv::Mat();
+    } catch (...) {
+        std::cout << "Unknown exception in cylindrical surround view creation" << std::endl;
+        return cv::Mat();
+    }
+}
+
+// Project image to cylindrical coordinates for panoramic stitching
+cv::Mat ImageProcessor::projectToCylindrical(const cv::Mat& input, const std::string& cameraName, float focalLength) {
+    if (input.empty()) {
+        std::cout << "Error: Empty input to projectToCylindrical for camera: " << cameraName << std::endl;
+        return cv::Mat();
+    }
+    
+    std::cout << "Projecting " << cameraName << " camera image (size: " << input.cols << "x" << input.rows << ") to cylindrical..." << std::endl;
+    
+    cv::Mat output = cv::Mat::zeros(input.size(), input.type());
+    cv::Point2f center(input.cols / 2.0f, input.rows / 2.0f);
+    
+    int processedPixels = 0;
+    for (int y = 0; y < output.rows; y++) {
+        for (int x = 0; x < output.cols; x++) {
+            // Convert to cylindrical coordinates
+            cv::Point2f cylPoint = cartesianToCylindrical(cv::Point2f(x, y), focalLength, center);
+            
+            // Safety bounds checking
+            int srcX = static_cast<int>(std::round(cylPoint.x));
+            int srcY = static_cast<int>(std::round(cylPoint.y));
+            
+            // Map back to input image coordinates with bounds checking
+            if (srcX >= 0 && srcX < input.cols && srcY >= 0 && srcY < input.rows) {
+                output.at<cv::Vec3b>(y, x) = input.at<cv::Vec3b>(srcY, srcX);
+                processedPixels++;
+            }
+        }
+    }
+    
+    std::cout << "Cylindrical projection for " << cameraName << " completed. Processed " << processedPixels << " pixels." << std::endl;
+    return output;
+}
+
+// Convert cartesian to cylindrical coordinates
+cv::Point2f ImageProcessor::cartesianToCylindrical(const cv::Point2f& point, float focalLength, const cv::Point2f& center) {
+    float x = point.x - center.x;
+    float y = point.y - center.y;
+    
+    // Safety check to avoid extreme values
+    if (std::abs(x) < 1e-6) x = 1e-6f;
+    
+    // Cylindrical projection with bounds checking
+    float theta = std::atan2(x, focalLength);
+    float h = y / std::sqrt(x*x + focalLength*focalLength) * focalLength;
+    
+    // Map to image coordinates with clamping
+    float cylX = center.x + focalLength * theta;
+    float cylY = center.y + h;
+    
+    // Clamp to image bounds
+    cylX = std::max(0.0f, std::min(static_cast<float>(center.x * 2), cylX));
+    cylY = std::max(0.0f, std::min(static_cast<float>(center.y * 2), cylY));
+    
+    return cv::Point2f(cylX, cylY);
+}
+
+// Convert cylindrical to cartesian coordinates
+cv::Point2f ImageProcessor::cylindricalToCartesian(const cv::Point2f& cylPoint, float focalLength, const cv::Point2f& center) {
+    float theta = (cylPoint.x - center.x) / focalLength;
+    float h = cylPoint.y - center.y;
+    
+    // Inverse cylindrical projection
+    float x = focalLength * std::tan(theta);
+    float y = h * std::sqrt(x*x + focalLength*focalLength) / focalLength;
+    
+    return cv::Point2f(center.x + x, center.y + y);
+}
+
+// Create blending mask with soft falloff
+cv::Mat ImageProcessor::createBlendingMask(const cv::Mat& image, const cv::Point2f& center, float radius, float featherWidth) {
+    cv::Mat mask = cv::Mat::zeros(image.rows, image.cols, CV_32F);
+    
+    for (int y = 0; y < mask.rows; y++) {
+        for (int x = 0; x < mask.cols; x++) {
+            float dist = cv::norm(cv::Point2f(x, y) - center);
+            
+            if (dist <= radius - featherWidth) {
+                mask.at<float>(y, x) = 1.0f;
+            } else if (dist <= radius) {
+                // Smooth falloff in feather region
+                float t = (radius - dist) / featherWidth;
+                mask.at<float>(y, x) = t * t * (3.0f - 2.0f * t); // Smooth step function
+            }
+        }
+    }
+    
+    return mask;
+}
+
+// Correct perspective distortion for bird's-eye view
+cv::Mat ImageProcessor::correctPerspectiveDistortion(const cv::Mat& input, const std::string& cameraName, float vehicleHeight) {
+    if (input.empty()) return cv::Mat();
+    
+    // Define perspective correction based on vehicle-mounted camera geometry
+    cv::Point2f srcPoints[4] = {
+        cv::Point2f(input.cols * 0.2f, input.rows * 0.3f),  // Top-left
+        cv::Point2f(input.cols * 0.8f, input.rows * 0.3f),  // Top-right
+        cv::Point2f(input.cols * 0.9f, input.rows * 0.9f),  // Bottom-right
+        cv::Point2f(input.cols * 0.1f, input.rows * 0.9f)   // Bottom-left
+    };
+    
+    cv::Point2f dstPoints[4] = {
+        cv::Point2f(input.cols * 0.1f, input.rows * 0.1f),  // Top-left
+        cv::Point2f(input.cols * 0.9f, input.rows * 0.1f),  // Top-right
+        cv::Point2f(input.cols * 0.9f, input.rows * 0.9f),  // Bottom-right
+        cv::Point2f(input.cols * 0.1f, input.rows * 0.9f)   // Bottom-left
+    };
+    
+    cv::Mat perspectiveMatrix = cv::getPerspectiveTransform(srcPoints, dstPoints);
+    cv::Mat corrected;
+    cv::warpPerspective(input, corrected, perspectiveMatrix, input.size());
+    
+    return corrected;
+}
+
+// Helper function to place image with mask blending
+void ImageProcessor::placeImageWithMask(const cv::Mat& image, const cv::Mat& mask, cv::Mat& contribution, 
+                                       cv::Mat& totalWeights, int startX, int startY) {
+    // Convert image to float for blending
+    cv::Mat imageFloat;
+    image.convertTo(imageFloat, CV_32FC3, 1.0/255.0);
+    
+    int imgHeight = image.rows;
+    int imgWidth = image.cols;
+    int canvasHeight = contribution.rows;
+    int canvasWidth = contribution.cols;
+    
+    for (int y = 0; y < imgHeight; y++) {
+        for (int x = 0; x < imgWidth; x++) {
+            int canvasX = startX + x;
+            int canvasY = startY + y;
+            
+            // Check bounds
+            if (canvasX >= 0 && canvasX < canvasWidth && canvasY >= 0 && canvasY < canvasHeight) {
+                float weight = mask.at<float>(canvasY, canvasX);
+                if (weight > 0.0f) {
+                    cv::Vec3f pixel = imageFloat.at<cv::Vec3f>(y, x);
+                    contribution.at<cv::Vec3f>(canvasY, canvasX) += pixel * weight;
+                    totalWeights.at<float>(canvasY, canvasX) += weight;
+                }
+            }
+        }
+    }
 }

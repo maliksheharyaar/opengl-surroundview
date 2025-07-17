@@ -251,7 +251,7 @@ void Renderer3D::render() {
     glm::mat4 carModel = glm::mat4(1.0f);
     carModel = glm::translate(carModel, glm::vec3(0.0f, 0.1f, 0.0f)); // Center position, slightly elevated
     carModel = glm::rotate(carModel, glm::radians(180.0f), glm::vec3(0.0f, 1.0f, 0.0f)); // Rotate 180 degrees clockwise
-    carModel = glm::scale(carModel, glm::vec3(0.02f, 0.02f, 0.02f)); // Increased scale for better visibility
+    carModel = glm::scale(carModel, glm::vec3(0.015f, 0.015f, 0.015f)); // REDUCED scale for smaller car model
     m_shader->setMat4("model", carModel);
     
 #ifdef HAVE_ASSIMP

@@ -98,8 +98,39 @@ int main() {
         std::cout << "Applying full pipeline: fisheye undistortion + homography transformation..." << std::endl;
         std::cout << "Using parallel processing with " << std::thread::hardware_concurrency() << " threads" << std::endl;
         
-        // Create surround view from all four cameras using parallel processing
-        cv::Mat surroundView = imageProcessor.createSurroundViewParallel(firstFront, firstLeft, firstRight, firstBack);
+        // Toggle between standard, enhanced, seamless, and computer vision surround view methods
+        bool useEnhancedWarping = true; // Set to true to test the new warping features
+        bool useSeamlessView = false;   // Set to false to test other methods
+        bool useCylindricalCV = true;   // Set to true to test computer vision cylindrical approach
+        
+        cv::Mat surroundView;
+        if (useCylindricalCV) {
+            std::cout << "Using computer vision cylindrical surround view with dynamic warping..." << std::endl;
+            try {
+                surroundView = imageProcessor.createCylindricalSurroundView(firstFront, firstLeft, firstRight, firstBack);
+                if (surroundView.empty()) {
+                    std::cout << "Error: Cylindrical surround view creation failed, falling back to seamless mode..." << std::endl;
+                    surroundView = imageProcessor.createSeamlessSurroundView(firstFront, firstLeft, firstRight, firstBack);
+                } else {
+                    std::cout << "Cylindrical surround view created successfully!" << std::endl;
+                }
+            } catch (const std::exception& e) {
+                std::cout << "Exception in cylindrical mode: " << e.what() << ", falling back to seamless mode..." << std::endl;
+                surroundView = imageProcessor.createSeamlessSurroundView(firstFront, firstLeft, firstRight, firstBack);
+            } catch (...) {
+                std::cout << "Unknown exception in cylindrical mode, falling back to seamless mode..." << std::endl;
+                surroundView = imageProcessor.createSeamlessSurroundView(firstFront, firstLeft, firstRight, firstBack);
+            }
+        } else if (useSeamlessView) {
+            std::cout << "Using seamless surround view without grid constraints..." << std::endl;
+            surroundView = imageProcessor.createSeamlessSurroundView(firstFront, firstLeft, firstRight, firstBack);
+        } else if (useEnhancedWarping) {
+            std::cout << "Using enhanced surround view with advanced warping..." << std::endl;
+            surroundView = imageProcessor.createEnhancedSurroundView(firstFront, firstLeft, firstRight, firstBack);
+        } else {
+            // Use the existing parallel processing pipeline
+            surroundView = imageProcessor.createSurroundViewParallel(firstFront, firstLeft, firstRight, firstBack);
+        }
         if (!surroundView.empty()) {
             renderer.updateTexture(surroundView);
         } else {
@@ -111,6 +142,11 @@ int main() {
 
     std::cout << "Rendering video stream. Use mouse scroll wheel to zoom in/out." << std::endl;
     std::cout << "Press ESC to exit." << std::endl;
+
+    // Toggle between standard, enhanced, seamless, and computer vision surround view methods
+    bool useEnhancedWarping = true; // Set to true to test the new warping features
+    bool useSeamlessView = false;   // Set to false to test other methods
+    bool useCylindricalCV = true;   // Set to true to test computer vision cylindrical approach
 
     // Video stream variables
     size_t currentImageIndex = 0;
@@ -132,8 +168,21 @@ int main() {
             cv::Mat currentBack = imageProcessor.loadImage(backSequence[currentImageIndex]);
             
             if (!currentFront.empty() && !currentLeft.empty() && !currentRight.empty() && !currentBack.empty()) {
-                // Create surround view from all four cameras using parallel processing
-                cv::Mat surroundView = imageProcessor.createSurroundViewParallel(currentFront, currentLeft, currentRight, currentBack);
+                // Create surround view from all four cameras
+                cv::Mat surroundView;
+                if (useCylindricalCV) {
+                    surroundView = imageProcessor.createCylindricalSurroundView(currentFront, currentLeft, currentRight, currentBack);
+                    if (surroundView.empty()) {
+                        std::cout << "Error: Cylindrical surround view update failed, falling back..." << std::endl;
+                        surroundView = imageProcessor.createSeamlessSurroundView(currentFront, currentLeft, currentRight, currentBack);
+                    }
+                } else if (useSeamlessView) {
+                    surroundView = imageProcessor.createSeamlessSurroundView(currentFront, currentLeft, currentRight, currentBack);
+                } else if (useEnhancedWarping) {
+                    surroundView = imageProcessor.createEnhancedSurroundView(currentFront, currentLeft, currentRight, currentBack);
+                } else {
+                    surroundView = imageProcessor.createSurroundViewParallel(currentFront, currentLeft, currentRight, currentBack);
+                }
                 
                 if (!surroundView.empty()) {
                     renderer.updateTexture(surroundView);

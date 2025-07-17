@@ -60,10 +60,70 @@ public:
     cv::Vec3f getCameraRotation(const std::string& cameraName);
     cv::Mat createSurroundViewWithExtrinsics(const cv::Mat& front, const cv::Mat& left, const cv::Mat& right, const cv::Mat& back);
     
+    // Enhanced surround view with advanced warping and stitching
+    cv::Mat createSurroundViewWithWarping(const cv::Mat& front, const cv::Mat& left, const cv::Mat& right, const cv::Mat& back);
+    cv::Mat createEnhancedSurroundView(const cv::Mat& front, const cv::Mat& left, const cv::Mat& right, const cv::Mat& back);
+    
+    // Advanced image stitching and warping
+    cv::Mat calculateHomographyMatrix(const std::string& cameraName, const cv::Size& imageSize);
+    cv::Mat applyBirdEyeProjection(const cv::Mat& input, const std::string& cameraName);
+    cv::Mat createStitchingMask(const cv::Mat& image, const std::string& cameraName);
+    
+    // Perspective warping for seamless surround view
+    cv::Mat applyPerspectiveWarpingForSurroundView(const cv::Mat& input, const std::string& cameraName, cv::Size outputSize);
+    
+    // Corner and edge detection for seamless stitching
+    std::vector<cv::Point2f> findStitchingPoints(const cv::Mat& img1, const cv::Mat& img2);
+    cv::Mat warpToCommonPlane(const cv::Mat& input, const std::string& fromCamera, const std::string& toCamera);
+    
+    // Ground plane projection using extrinsics
+    cv::Mat projectToGroundPlane(const cv::Mat& input, const std::string& cameraName, float groundHeight = 0.0f);
+    
+    // Image blending for seamless stitching
+    cv::Mat blendImages(const cv::Mat& img1, const cv::Mat& img2, const cv::Mat& mask1, const cv::Mat& mask2);
+    
+    // Ground homography calculation for bird's-eye view
+    cv::Mat calculateGroundHomography(const std::string& cameraView, const cv::Size& imageSize, float groundHeight = 0.0f);
+
     // Camera-specific cropping to remove car frame/body parts
     cv::Mat applyCameraSpecificCropping(const cv::Mat& image, const std::string& cameraName);
     cv::Mat applyPerspectiveCorrection(const cv::Mat& input, const std::string& cameraName);
     cv::Mat projectToBirdEye(const cv::Mat& input, const std::string& cameraName, float groundPlaneHeight = 0.0f);
+
+    // Seamless surround view without rigid grid structure
+    cv::Mat createSeamlessSurroundView(const cv::Mat& front, const cv::Mat& left, const cv::Mat& right, const cv::Mat& back);
+    
+    // Helper for seamless blending
+    void placeImageWithMask(const cv::Mat& image, const cv::Mat& mask, cv::Mat& contribution, cv::Mat& totalWeights, int startX, int startY);
+
+    // Computer vision-based seamless stitching with dynamic warping
+    cv::Mat createCylindricalSurroundView(const cv::Mat& front, const cv::Mat& left, const cv::Mat& right, const cv::Mat& back);
+    
+    // Cylindrical projection for seamless panoramic stitching
+    cv::Mat projectToCylindrical(const cv::Mat& input, const std::string& cameraName, float focalLength = 800.0f);
+    cv::Mat projectToSpherical(const cv::Mat& input, const std::string& cameraName, float focalLength = 800.0f);
+    
+    // Feature-based image alignment and warping
+    cv::Mat alignAndWarpImage(const cv::Mat& source, const cv::Mat& target, const std::string& cameraName);
+    std::vector<cv::KeyPoint> detectFeatures(const cv::Mat& image);
+    std::vector<cv::DMatch> matchFeatures(const cv::Mat& desc1, const cv::Mat& desc2);
+    cv::Mat calculateWarpMatrix(const std::vector<cv::Point2f>& srcPoints, const std::vector<cv::Point2f>& dstPoints);
+    
+    // Gradient-domain blending for seamless transitions
+    cv::Mat gradientDomainBlending(const std::vector<cv::Mat>& images, const std::vector<cv::Mat>& masks, const cv::Size& outputSize);
+    cv::Mat createBlendingMask(const cv::Mat& image, const cv::Point2f& center, float radius, float featherWidth = 50.0f);
+    
+    // Dynamic mesh warping for flexible image deformation
+    cv::Mat applyMeshWarping(const cv::Mat& input, const std::vector<cv::Point2f>& srcPoints, const std::vector<cv::Point2f>& dstPoints);
+    std::vector<cv::Point2f> generateMeshGrid(const cv::Size& imageSize, int gridSize = 20);
+    
+    // Cylindrical coordinate transformation
+    cv::Point2f cartesianToCylindrical(const cv::Point2f& point, float focalLength, const cv::Point2f& center);
+    cv::Point2f cylindricalToCartesian(const cv::Point2f& cylPoint, float focalLength, const cv::Point2f& center);
+    
+    // Advanced perspective correction for ground plane projection
+    cv::Mat correctPerspectiveDistortion(const cv::Mat& input, const std::string& cameraName, float vehicleHeight = 1.5f);
+    cv::Mat createGroundPlaneMapping(const std::string& cameraName, const cv::Size& imageSize, float groundHeight = 0.0f);
 
 private:
     // Fisheye camera parameters
