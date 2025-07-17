@@ -56,13 +56,6 @@ desktop.ini
 vcpkg_installed/
 packages/
 
-# Asset folders (keep structure but ignore large files)
-assets/**/*.png
-assets/**/*.jpg
-assets/**/*.jpeg
-assets/**/*.mp4
-assets/**/*.avi
-
-# Keep important assets
+# Keep all important assets including images for convenience
 !assets/model.glb
 !assets/README.md
